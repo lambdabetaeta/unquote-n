@@ -67,6 +67,23 @@ nVarApp (one (one (one none)))
 nVarApp count = {! unquote-n   !}
 -- nVarApp (one count) = λ e → {!  nVarApp count   !} --app (nVarApp count) (e none)
 
+-- This is closer to what nVarApp is in racket!!!! because var arg
+nApp : ∀{Γ T} → (count : ArgCount T) → Exp Γ T → ToType count Γ
+nApp none e = e
+nApp (one count) e = λ x → nApp count (app e (x none))
+
+nAppImpl : ∀{Γ T} → (count : ArgCount T) → Exp Γ T
+  → (resWrap : Exp Γ T → ⊤)
+  → ToType count Γ
+nAppImpl none e resWrap = {! resWrap e  !} -- resWrap e
+nAppImpl (one count) e resWrap = λ x → nAppImpl count {!   !} {!   !}
+
+-- nVarAppImpl : ∀{Γ T} → (count : ArgCount T) → (resWrap : {!   !} )
+--   → ToType count (Γ , T)
+-- nVarAppImpl none resWrap = {! resWrap (var same)  !}
+-- nVarAppImpl (one count) resWrap = {!   !}
+--  -- = λ x → nVarAppImpl count {!   !}
+
 varCase : ∀{Γ} → (icx : InCtx Γ) → (count : ArgCount (Tat icx))
   → (γ : ctxType Γ) → ToType count (reduceCtx Γ γ)
 -- varCase same none (γ , nothing) = var same

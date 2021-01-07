@@ -62,6 +62,7 @@ mutual
   reduceCtx (Γ , T) (γ , nothing) = reduceCtx Γ γ , T
   reduceCtx (Γ , T) (γ , just e) = reduceCtx Γ γ
 
+
 -- T = A → B → C,    count = 2
 -- output type is      Exp (Γ , T) A → Exp (Γ , T) B → Exp (Γ , T) C
 nVarApp : ∀{Γ T} → (count : ArgCount T)-- → ToType count (Γ , T)
