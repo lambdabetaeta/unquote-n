@@ -38,7 +38,8 @@ data ArgCount : Type → Set where
 ToType : ∀{T} → ArgCount T → Ctx → Set
 ToType (none {T}) Γ = Exp Γ T
 -- ToType (one {A} count) Γ = (Exp Γ A) → ToType count Γ
-ToType (one {A} count) Γ = ((count : ArgCount A) → (ToType count Γ)) → ToType count Γ
+ToType (one {A} count) Γ
+  = ((count : ArgCount A) → (ToType count Γ)) → ToType count Γ
 -- TODO: think about how the Γ arg really works here!!!
 
 mutual
@@ -59,9 +60,11 @@ nVarApp : ∀{Γ T} → (count : ArgCount T) → ToType count (Γ , T)
 nVarApp none = var same
 -- e none : A, (nVarApp count γ) : B, var same : A → B
 nVarApp (one none) = λ e → app (var same) (e none)
-nVarApp (one (one none)) = λ e₁ e₂ → app (app (var same) (e₁ none)) (e₂ none)
--- nVarApp (one (one none)) = λ e₁ e₂ → app (nVarApp (one none) e₁) (e₂ none)
-nVarApp (one (one (one count))) = {!   !}
+-- nVarApp (one (one none)) = λ e₁ e₂ → app (app (var same) (e₁ none)) (e₂ none)
+nVarApp (one (one none)) = λ e₁ e₂ → app (nVarApp (one none) e₁) (e₂ none)
+nVarApp (one (one (one none)))
+  = λ e₁ e₂ e₃ → app (app (nVarApp (one none) e₁) (e₂ none)) (e₃ none)
+nVarApp count = {! unquote-n   !}
 -- nVarApp (one count) = λ e → {!  nVarApp count   !} --app (nVarApp count) (e none)
 
 varCase : ∀{Γ} → (icx : InCtx Γ) → (count : ArgCount (Tat icx))
