@@ -2,6 +2,7 @@ open import Data.Unit
 open import Data.Product
 open import Data.Bool
 open import Data.Maybe
+open import Relation.Binary.PropositionalEquality
 
 data Type : Set where
   _⇒_ : Type → Type → Type
@@ -31,69 +32,84 @@ data Exp : Ctx → Type → Set where
   false : ∀{Γ} → Exp Γ bool
   if : ∀{Γ A} → Exp Γ bool → Exp Γ A → Exp Γ A → Exp Γ A
 
+data Pre : Ctx → Set where
+  same : ∀{Γ} → Pre Γ
+  next : ∀{Γ T} → Pre Γ → Pre (Γ , T)
+
+toCtx : ∀{Γ} → Pre Γ → Ctx
+toCtx (same {Γ}) = Γ
+toCtx (next pre) = toCtx pre
+
+weakenΓ : ∀{Γ} → Pre Γ → Type → Ctx
+weakenΓ (same {Γ}) A = Γ , A
+weakenΓ (next {Γ} {T} pre) A = (weakenΓ pre A) , T
+
+weakenICX : ∀{Γ} → (pre : Pre Γ) → (W : Type)
+  → (icx : InCtx Γ) → Σ (InCtx (weakenΓ pre W)) (λ icx' → Tat icx' ≡ Tat icx)
+weakenICX same W icx = next icx , refl
+weakenICX (next pre) W same = same , refl
+weakenICX (next pre) W (next icx) with weakenICX pre W icx
+...                               | (i , p) = (next i , p)
+
+weaken : ∀{Γ T} → (pre : Pre Γ) → (W : Type)
+  → Exp Γ T → Exp (weakenΓ pre W) T
+weaken pre W (var icx) with weakenICX pre W icx
+...                    | (i , p) = subst (λ T → Exp _ T) p (var i)
+weaken pre W (lambda e) = lambda (weaken (next pre) W e)
+weaken pre W (app e₁ e₂) = app (weaken pre W e₁) (weaken pre W e₂)
+weaken pre W true = true
+weaken pre W false = false
+weaken pre W (if e e₁ e₂) = if (weaken pre W e) (weaken pre W e₁) (weaken pre W e₂)
+
 data ArgCount : Type → Set where
   none : ∀{T} → ArgCount T
   one : ∀{A B} → ArgCount B → ArgCount (A ⇒ B)
 
+-- TODO: make a more descriptive name for this function
 ToType : ∀{T} → ArgCount T → Ctx → Set
 ToType (none {T}) Γ = Exp Γ T
--- ToType (one {A} count) Γ = (Exp Γ A) → ToType count Γ
 ToType (one {A} count) Γ
-  = ((count : ArgCount A) → (ToType count Γ)) → ToType count Γ
--- TODO: think about how the Γ arg really works here!!!
+  = ((count' : ArgCount A) → (ToType count' Γ)) → ToType count Γ
+  -- the above line passes termination check because A is structurally less than (A ⇒ B)
+  -- Question: In system F, will type levels be necessary or can I do impredicative?
+  -- If necessary, why and where do they come in? If not, what stopping me form doing impredicative dependent type theory (which is of course inconsistent?)
+
+  -- TODO: TODO: PROBLEM:
+  -- Anothing thing is that in dep thy, the r.h.s of the line
+  -- will need to depend on the argument from the left!!!!!!
+  -- Maybe it just is in a more general context?
+  -- (I think system F is fine though, as that only happens when arg is
+  -- ∀X, but then left side doesn't need to input count.)
+
+weakenToType : ∀{Γ T} → (count : ArgCount T) → (pre : Pre Γ) → (W : Type)
+  → ToType count Γ → ToType count (weakenΓ pre W)
+weakenToType none pre W e = weaken pre W e
+weakenToType (one count) pre W e
+  = λ x → weakenToType count pre W {! e x  !}
+  -- = λ e → {! (weakenToType count pre W) (e ?)  !}
 
 mutual
   ctxType : Ctx → Set
   ctxType ∅ = ⊤
-  -- ctxType (Γ , T) = Σ (ctxType Γ) (λ γ → Maybe (Exp (reduceCtx Γ γ) T))
   ctxType (Γ , T) = Σ (ctxType Γ) (λ γ → Maybe ((count : ArgCount T) → ToType count (reduceCtx Γ γ)))
-  -- ctxType (Γ , T) = ctxType Γ × ((count : ArgCount T) → ToType count Γ)
 
   reduceCtx : (Γ : Ctx) → ctxType Γ → Ctx
   reduceCtx ∅ tt = ∅
   reduceCtx (Γ , T) (γ , nothing) = reduceCtx Γ γ , T
   reduceCtx (Γ , T) (γ , just e) = reduceCtx Γ γ
 
--- T = A → B → C,    count = 2
--- output type is      Exp (Γ , T) A → Exp (Γ , T) B → Exp (Γ , T) C
-nVarApp : ∀{Γ T} → (count : ArgCount T) → ToType count (Γ , T)
-nVarApp none = var same
--- e none : A, (nVarApp count γ) : B, var same : A → B
-nVarApp (one none) = λ e → app (var same) (e none)
--- nVarApp (one (one none)) = λ e₁ e₂ → app (app (var same) (e₁ none)) (e₂ none)
-nVarApp (one (one none)) = λ e₁ e₂ → app (nVarApp (one none) e₁) (e₂ none)
-nVarApp (one (one (one none)))
-  = λ e₁ e₂ e₃ → app (app (nVarApp (one none) e₁) (e₂ none)) (e₃ none)
-nVarApp count = {! unquote-n   !}
--- nVarApp (one count) = λ e → {!  nVarApp count   !} --app (nVarApp count) (e none)
-
--- This is closer to what nVarApp is in racket!!!! because var arg
+-- Simplify racket implementation to this!!!
 nApp : ∀{Γ T} → (count : ArgCount T) → Exp Γ T → ToType count Γ
 nApp none e = e
 nApp (one count) e = λ x → nApp count (app e (x none))
 
-nAppImpl : ∀{Γ T} → (count : ArgCount T) → Exp Γ T
-  → (resWrap : Exp Γ T → ⊤)
-  → ToType count Γ
-nAppImpl none e resWrap = {! resWrap e  !} -- resWrap e
-nAppImpl (one count) e resWrap = λ x → nAppImpl count {!   !} {!   !}
-
--- nVarAppImpl : ∀{Γ T} → (count : ArgCount T) → (resWrap : {!   !} )
---   → ToType count (Γ , T)
--- nVarAppImpl none resWrap = {! resWrap (var same)  !}
--- nVarAppImpl (one count) resWrap = {!   !}
---  -- = λ x → nVarAppImpl count {!   !}
-
 varCase : ∀{Γ} → (icx : InCtx Γ) → (count : ArgCount (Tat icx))
   → (γ : ctxType Γ) → ToType count (reduceCtx Γ γ)
--- varCase same none (γ , nothing) = var same
-varCase same count (γ , nothing) = nVarApp count
+varCase same count (γ , nothing) = nApp count (var same)
 varCase same count (γ , just e) = e count
-varCase (next icx) count (γ , nothing) = {! varCase icx count γ  !} -- this needs weakening. Is this a design flaw, or something that must be the case in the unquote-n algorithm?
+varCase (next icx) count (γ , nothing) = {! (varCase icx count γ)  !} -- this needs weakening. Is this a design flaw, or something that must be the case in the unquote-n algorithm?
 varCase (next icx) count (γ , just x) = varCase icx count γ
 
--- IDEA: the output context shouldn't be the same as input context generally!
--- anything contained in γ should be removed from output Γ
 unquote-n : ∀{Γ T} → Exp Γ T → (count : ArgCount T) → (γ : ctxType Γ)
   → ToType count (reduceCtx Γ γ)
 unquote-n (var icx) count γ = varCase icx count γ
@@ -107,6 +123,3 @@ unquote-n true none γ = true
 unquote-n false none γ = false
 unquote-n (if e e₁ e₂) count γ with unquote-n e none γ
 ... | e' = {! e'  !}
-
--- TODO: double check that some issue like the repeated variable issue from
--- racket isn't secretly happening here!
