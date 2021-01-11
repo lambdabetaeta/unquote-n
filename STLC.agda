@@ -86,12 +86,11 @@ ToType (one {A} count) Γ
   -- (I think system F is fine though, as that only happens when arg is
   -- ∀X, but then left side doesn't need to input count.)
 
-weakenToType : ∀{Γ T} → (count : ArgCount T) → (pre : Pre Γ) → (W : Type)
-  → ToType count Γ → ToType count (weakenΓ pre W)
-weakenToType none pre W e = weaken pre W e
-weakenToType (one count) pre W e
-  = λ x → weakenToType count pre W {! e x  !}
-  -- = λ e → {! (weakenToType count pre W) (e ?)  !}
+-- weakenToType : ∀{Γ T} → (count : ArgCount T) → (pre : Pre Γ) → (W : Type)
+--   → ToType count Γ → ToType count (weakenΓ pre W)
+-- weakenToType none pre W e = weaken pre W e
+-- weakenToType (one count) pre W e
+--   = λ x → weakenToType count pre W {! e x  !}
 
 mutual
   ctxType : Ctx → Set
@@ -128,8 +127,43 @@ unquote-n (app e₁ e₂) count γ
   -- (2)
 unquote-n true none γ = true
 unquote-n false none γ = false
-unquote-n (if e e₁ e₂) count γ with unquote-n e none γ
-... | e' = {! e'  !}
+unquote-n (if e e₁ e₂) = {!   !}
+
+
+
+-- Some evaluation works even without the missing case
+code : Exp ∅ bool
+code = app (lambda (var same)) true
+
+res : (unquote-n code none tt) ≡ true
+res = refl
+
+code2 : Exp ∅ (bool ⇒ bool)
+code2 = lambda (app (lambda (var same)) true)
+
+res2 : (unquote-n code2 none tt) ≡ (lambda true)
+res2 = refl
+
+code3 : Exp ∅ (bool ⇒ bool)
+code3 = app (lambda (lambda (var same))) true
+
+res3 : (unquote-n code3 none tt) ≡ (lambda (var same))
+res3 = refl
+
+code4 : Exp ∅ (bool ⇒ (bool ⇒ bool))
+code4 = lambda (lambda (var same))
+
+res4 : (unquote-n code4 none tt) ≡ code4
+res4 = refl
+
+code5 : Exp ∅ (bool ⇒ bool)
+code5 = app (lambda (lambda (var (next same)))) true
+
+-- NOTE: that in this case, the true is actually in a smaller context.
+-- So it would work to weaken only after applying the function of type ToType count
+res5 : (unquote-n code5 none tt) ≡ (lambda true)
+res5 = {!   !}
+
 
 {-
 THINKING:::

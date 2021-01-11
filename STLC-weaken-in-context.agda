@@ -32,34 +32,25 @@ data Exp : Ctx → Type → Set where
   false : ∀{Γ} → Exp Γ bool
   if : ∀{Γ A} → Exp Γ bool → Exp Γ A → Exp Γ A → Exp Γ A
 
-data Pre : Ctx → Set where
-  same : ∀{Γ} → Pre Γ
-  next : ∀{Γ T} → Pre Γ → Pre (Γ , T)
+Ren : Ctx → Ctx → Set
+Ren Γ₁ Γ₂ = (x : InCtx Γ₁) → Σ (InCtx Γ₂) (λ x' → Tat x' ≡ Tat x)
 
-toCtx : ∀{Γ} → Pre Γ → Ctx
-toCtx (same {Γ}) = Γ
-toCtx (next pre) = toCtx pre
+liftRen : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Ren (Γ₁ , T) (Γ₂ , T)
+liftRen ren same = same , refl
+liftRen ren (next itc) = let (itc' , p) = ren itc
+  in next itc' , p
 
-weakenΓ : ∀{Γ} → Pre Γ → Type → Ctx
-weakenΓ (same {Γ}) A = Γ , A
-weakenΓ (next {Γ} {T} pre) A = (weakenΓ pre A) , T
+idRen : ∀{Γ} → Ren Γ Γ
+idRen x = x , refl
 
-weakenICX : ∀{Γ} → (pre : Pre Γ) → (W : Type)
-  → (icx : InCtx Γ) → Σ (InCtx (weakenΓ pre W)) (λ icx' → Tat icx' ≡ Tat icx)
-weakenICX same W icx = next icx , refl
-weakenICX (next pre) W same = same , refl
-weakenICX (next pre) W (next icx) with weakenICX pre W icx
-...                               | (i , p) = (next i , p)
-
-weaken : ∀{Γ T} → (pre : Pre Γ) → (W : Type)
-  → Exp Γ T → Exp (weakenΓ pre W) T
-weaken pre W (var icx) with weakenICX pre W icx
-...                    | (i , p) = subst (λ T → Exp _ T) p (var i)
-weaken pre W (lambda e) = lambda (weaken (next pre) W e)
-weaken pre W (app e₁ e₂) = app (weaken pre W e₁) (weaken pre W e₂)
-weaken pre W true = true
-weaken pre W false = false
-weaken pre W (if e e₁ e₂) = if (weaken pre W e) (weaken pre W e₁) (weaken pre W e₂)
+weaken : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Exp Γ₁ T → Exp Γ₂ T
+weaken {Γ₁} {Γ₂} ren (var icx) = let (icx' , p) = ren icx in
+  subst (λ T → Exp Γ₂ T) p (var icx')
+weaken ren (lambda e) = lambda (weaken (liftRen ren) e)
+weaken ren (app e₁ e₂) = app (weaken ren e₁) (weaken ren e₂)
+weaken ren true = true
+weaken ren false = false
+weaken ren (if e e₁ e₂) = if (weaken ren e) (weaken ren e₁) (weaken ren e₂)
 
 data ArgCount : Type → Set where
   none : ∀{T} → ArgCount T
@@ -69,11 +60,10 @@ data ArgCount : Type → Set where
 ToType : ∀{T} → ArgCount T → Ctx → Set
 ToType (none {T}) Γ = Exp Γ T
 ToType (one {A} count) Γ
-  = ((count' : ArgCount A) → (ToType count' Γ)) → ToType count Γ
-  -- = ((Ren Γ Γ') → (count' : ArgCount A) → (ToType count' Γ'))
-      -- → ToType count Γ
-  -- (1)
-
+  = (∀{Γ'} → (Ren Γ Γ')
+      → (count' : ArgCount A)
+      → (ToType count' Γ'))
+    → ToType count Γ
 
   -- the above line passes termination check because A is structurally less than (A ⇒ B)
   -- Question: In system F, will type levels be necessary or can I do impredicative?
@@ -86,17 +76,15 @@ ToType (one {A} count) Γ
   -- (I think system F is fine though, as that only happens when arg is
   -- ∀X, but then left side doesn't need to input count.)
 
-weakenToType : ∀{Γ T} → (count : ArgCount T) → (pre : Pre Γ) → (W : Type)
-  → ToType count Γ → ToType count (weakenΓ pre W)
-weakenToType none pre W e = weaken pre W e
-weakenToType (one count) pre W e
-  = λ x → weakenToType count pre W {! e x  !}
-  -- = λ e → {! (weakenToType count pre W) (e ?)  !}
-
 mutual
   ctxType : Ctx → Set
   ctxType ∅ = ⊤
-  ctxType (Γ , T) = Σ (ctxType Γ) (λ γ → Maybe ((count : ArgCount T) → ToType count (reduceCtx Γ γ)))
+  ctxType (Γ , T)
+    = Σ (ctxType Γ)
+        (λ γ →
+          Maybe (∀{Γ'} → Ren Γ Γ'
+            → (count : ArgCount T) → ToType count (reduceCtx Γ' γ)))
+  -- TODO: why is there code repetition here with ToType?
 
   reduceCtx : (Γ : Ctx) → ctxType Γ → Ctx
   reduceCtx ∅ tt = ∅
@@ -106,7 +94,7 @@ mutual
 -- Simplify racket implementation to this!!!
 nApp : ∀{Γ T} → (count : ArgCount T) → Exp Γ T → ToType count Γ
 nApp none e = e
-nApp (one count) e = λ x → nApp count (app e (x none))
+nApp (one count) e = λ x → nApp count (app e (x idRen none) )
 
 varCase : ∀{Γ} → (icx : InCtx Γ) → (count : ArgCount (Tat icx))
   → (γ : ctxType Γ) → ToType count (reduceCtx Γ γ)
@@ -114,7 +102,6 @@ varCase same count (γ , nothing) = nApp count (var same)
 varCase same count (γ , just e) = e count
 varCase (next icx) count (γ , nothing) = {! (varCase icx count γ)  !} -- this needs weakening. Is this a design flaw, or something that must be the case in the unquote-n algorithm?
 varCase (next icx) count (γ , just x) = varCase icx count γ
--- (3)
 
 unquote-n : ∀{Γ T} → Exp Γ T → (count : ArgCount T) → (γ : ctxType Γ)
   → ToType count (reduceCtx Γ γ)
@@ -122,62 +109,13 @@ unquote-n (var icx) count γ = varCase icx count γ
 unquote-n (lambda e) none γ
   = lambda (unquote-n e none (γ , nothing)) -- e is in context Γ , A
 unquote-n (lambda e) (one count) γ
-  = λ a → unquote-n e count (γ , just a)
+  = {!   !}
+  -- = λ a → unquote-n e count (γ , just a)
 unquote-n (app e₁ e₂) count γ
-  = (unquote-n e₁ (one count) γ) (λ count → unquote-n e₂ count γ) -- parametrized by count, Γ and γ fixed
-  -- (2)
+  = (unquote-n e₁ (one count) γ) {!   !}
+  -- = (unquote-n e₁ (one count) γ) (λ count → unquote-n e₂ count γ)
+  -- IDEA: IDEA: include renaming arg after count, weaken BEFORE unquote!
 unquote-n true none γ = true
 unquote-n false none γ = false
 unquote-n (if e e₁ e₂) count γ with unquote-n e none γ
 ... | e' = {! e'  !}
-
-{-
-THINKING:::
-
-If Γ weakens to Γ', then
-Can go (Exp T Γ) → (Exp T Γ')
-But not the other way.
-ToType count Γ is like (Exp A Γ) → (Exp B Γ)
-CANT go ((Exp A Γ) → (Exp B Γ)) → ((Exp A Γ') → (Exp B Γ'))
-
-BUT, given e : Exp (A ⇒ B) Γ,
-can go (Exp (A ⇒ B) Γ) → ((Exp A Γ) → (Exp B Γ))
-also,
-(Exp (A ⇒ B) Γ) → (Exp (A ⇒ B) Γ') → ((Exp A Γ') → (Exp B Γ'))
-
-So, need to do the weakening when e is an expression, not when its a ToType!!!
-
--}
-
-{-
-Potential plan:
-
-First, define Ren and appropriate renaming things above, instead of weaken
-Can reference that one System F file where I did those things...
-
-Next, at (1) change def of ToType so that it incorporates arbitrary renaming
-then, at (2), make app case use this with weakening
-CONSIDER: building the weakening into unquote instead of separate function?
-Lastly, at (3), figure out how to update var case to use this.
-Maybe make varCase output something which can be put in any context,
-then call it at Γ?
-
--}
-
-{-
-IDEa: maybe weakening is not a design flaw, but inherently necessary.
-
-Suppose I want to normalize the following program:
-(λ x y . x) (λ x . x)
-
-Unquote needs to put the (λ x . x) into a weaker context
-
--}
-
--- Ren : Ctx → Ctx → Set
--- Ren Γ₁ Γ₂ = (icx : InCtx Γ₁) →
---   (InCtx Γ₂ ⊎ ((count : ArgCount (Tat icx)) → ToType count Γ₂))
---
--- -- TODO TODO this one look at
--- Ren2 : Ctx → Ctx → Set
--- Ren2 Γ₁ Γ₂ = InCtx Γ₂ → InCtx Γ₁
