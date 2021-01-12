@@ -108,6 +108,9 @@ s₁ ∘ s₂ = λ x → let (y , p) = s₁ x
   in let (z , q) = s₂ y
   in z , trans q p
 
+weakenGExp : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → GExp Γ₁ T → GExp Γ₂ T
+weakenGExp ren g ren2 count = g (ren ∘ ren2) count
+
 transSR : ∀{Γ₁ Γ₂ Γ₃} → Sub Γ₁ Γ₂ → Ren Γ₂ Γ₃ → Sub Γ₁ Γ₃
 transSR sub ren x ren₂ = sub x (ren ∘ ren₂)
 
@@ -115,18 +118,16 @@ append1sub : ∀{Γ₁ A Γ₂} → Sub Γ₁ Γ₂ → GExp Γ₂ A → Sub (Γ
 append1sub sub e same ren = e ren
 append1sub sub e (next x) ren = sub x ren
 
-unquote-n : ∀{Γ₁ {-Γ₂-} T} → Exp Γ₁ T → Sub Γ₁ Γ₁ → GExp Γ₁ T
+unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → GExp Γ₂ T
 unquote-n (var icx) sub = sub icx
 unquote-n (lambda e) sub ren none
   = lambda (unquote-n e (liftSub sub) (liftRen ren) none)
 unquote-n (lambda e) sub ren (one count)
-  = λ a → unquote-n e {! append1sub sub  !} {!   !} count
-  -- = λ a → unquote-n e (append1sub sub {!   !} ) {!   !} count
+  = λ a → unquote-n e (append1sub sub {!   !} ) ren count
 unquote-n (app e₁ e₂) sub ren count
-  = unquote-n e₁ sub ren (one count) (λ ren₁ count → unquote-n e₂ sub (ren ∘ ren₁) count)
-  -- = unquote-n e₁ sub ren (one count) (λ ren₁ count → unquote-n e₂ (transSR sub ren) ren₁ count)
-unquote-n true = {!   !}
-unquote-n false = {!   !}
+  = unquote-n e₁ sub ren (one count) (λ ren₁ count → unquote-n e₂ (transSR sub ren) ren₁ count)
+unquote-n true sub ren none = true
+unquote-n false sub ren none = false
 unquote-n (if e e₁ e₂) = {!   !}
 -- unquote-n (lambda e) sub none = lambda (unquote-n e {!   !} none)
 -- unquote-n (lambda e) sub (one count) = λ a → unquote-n e {!   !} count
