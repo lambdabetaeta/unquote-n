@@ -142,11 +142,24 @@ append1AfterCount : ∀{Γ Γ' A T} → (count : ArgCount T)
   → Exp Γ' A → Sub (addToCtx count (Γ , A)) Γ'
 append1AfterCount count sub e = somethingSomethingCombineThings count (helper2 e) sub
 
+subForgetCount : ∀{Γ Γ' T} → (count : ArgCount T)
+  → Sub (addToCtx count Γ) Γ' → Sub Γ Γ'
+subForgetCount none sub = sub
+subForgetCount (one count) sub x = subForgetCount count sub (next x)
+
 nApp : ∀{Γ Γ' T} → (count : ArgCount T) → Sub (addToCtx count Γ) Γ'
   → Exp Γ' T -- sub icx
   → Exp Γ' (output count)
 nApp none sub e = e
-nApp (one count) sub e = nApp count sub (app e {!   !} )
+nApp (one count) sub e = nApp count sub (app e (subForgetCount count sub same))
+
+data Three : Set where
+  t f o : Three
+
+check : ∀{Γ T} → Exp Γ T → Three
+check true = t
+check false = f
+check _ = o
 
 unq : ∀{Γ Γ' T} → Exp Γ T → (count : ArgCount T)
   → Sub (addToCtx count Γ) Γ' -- For each var in (addToCtx count Γ), either provide a value, or simply output a var in Γ'.
@@ -159,4 +172,45 @@ unq (app {Γ} {A} {B} e₁ e₂) count sub
     in unq e₁ (one count) (append1AfterCount count sub n₂)
 unq true none sub = true
 unq false none sub = false
-unq (if e e₁ e₂) count = {!   !}
+unq (if e e₁ e₂) count sub with check (unq e none (subForgetCount count sub))
+... | t = unq e₁ count sub
+... | f = unq e₂ count sub
+... | o = if (unq e none (subForgetCount count sub))
+  (unq e₁ count sub)
+  (unq e₂ count sub)
+
+normalize : ∀{Γ T} → Exp Γ T → Exp Γ T
+normalize e = unq e none idSub
+
+
+-- This code badly needs some rewriting, but I'll test it first:
+
+code : Exp ∅ bool
+code = app (lambda (var same)) true
+
+res : normalize code ≡ true
+res = refl
+
+code2 : Exp ∅ (bool ⇒ bool)
+code2 = lambda (app (lambda (var same)) true)
+
+res2 : normalize code2 ≡ (lambda true)
+res2 = refl
+
+code3 : Exp ∅ (bool ⇒ bool)
+code3 = app (lambda (lambda (var same))) true
+
+res3 : normalize code3 ≡ (lambda (var same))
+res3 = refl
+
+code4 : Exp ∅ (bool ⇒ (bool ⇒ bool))
+code4 = lambda (lambda (var same))
+
+res4 : normalize code4 ≡ code4
+res4 = refl
+
+code5 : Exp ∅ (bool ⇒ bool)
+code5 = app (lambda (lambda (var (next same)))) true
+
+res5 : normalize code5 ≡ (lambda true)
+res5 = refl

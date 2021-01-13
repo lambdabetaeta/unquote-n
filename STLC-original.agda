@@ -92,6 +92,9 @@ ToType (one {A} count) Γ
 -- weakenToType (one count) pre W e
 --   = λ x → weakenToType count pre W {! e x  !}
 
+-- Exp Γ A → Exp Γ B
+-- Exp Γ' A → Exp Γ' B
+
 mutual
   ctxType : Ctx → Set
   ctxType ∅ = ⊤
