@@ -20,6 +20,10 @@ Tat : ∀{Γ} → InCtx Γ → Type
 Tat (same {Γ} {T}) = T
 Tat (next icx) = Tat icx
 
+Γat : ∀{Γ} → InCtx Γ → Ctx
+Γat (same {Γ} {T}) = Γ
+Γat (next icx) = Γat icx
+
 data Exp : Ctx → Type → Set where
   var : ∀{Γ} → (icx : InCtx Γ) → Exp Γ (Tat icx)
   lambda : ∀{Γ A B} → Exp (Γ , A) B → Exp Γ (A ⇒ B)
@@ -64,7 +68,6 @@ mutual
   PUExp (none {T}) Γ = Exp Γ T
   PUExp (one {A} count) Γ
     = (GExp Γ A) → PUExp count Γ
-    -- NOTE: maybe in system F here, the R.H.S. can simply be in a larger Δ
 
   -- Exp that can be partially unquoted to any amount
   APUExp : Ctx → Type → Set
@@ -72,91 +75,48 @@ mutual
 
   -- Exp that can be in a weaker context AND partially unquoted
   GExp : Ctx → Type → Set
-  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
+  GExp Γ T = ∀{Γ'} → Sub Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
 
-  -- NOTE: for system F, maybe in PUExp, just keep track of all of the
-  -- args and substitute them in the type at the end? YES: see paper. Subs will all be at one type level lower.
+  {-# TERMINATING #-}
+  Sub : Ctx → Ctx → Set
+  Sub Γ₁ Γ₂ = (x : InCtx Γ₁) → GExp Γ₂ (Tat x)
 
-  -- PUExp is defined by pattern matching.
-  -- It calls itself in two places, one through GExp.
-  -- Call through GExp has    T ↓   count ↑
-  -- Call directly has        T ↑   count ↓     (in STLC it is T ↓)
+mutual
+  nApp : ∀{Γ T} → (count : ArgCount T) → Exp Γ T → PUExp count Γ
+  nApp none e = e
+  nApp (one count) e = λ x → nApp count (app e (x idSub none) )
 
+  idSub : ∀{Γ} → Sub Γ Γ
+  idSub x sub count = {! nApp count (var x)  !}
 
-Sub : Ctx → Ctx → Set
-Sub Γ₁ Γ₂ = (x : InCtx Γ₁) → GExp Γ₂ (Tat x)
+-- liftSub : ∀{Γ₁ Γ₂ T} → Sub Γ₁ Γ₂ → Sub (Γ₁ , T) (Γ₂ , T)
+-- liftSub sub same ren count
+--   = nApp count let (y , p) = ren same in subst (λ T → Exp _ T) p (var y) -- define using nApp!!!!!!!!!
+-- liftSub sub (next itc) ren = sub itc (forget1ren ren)
 
-nApp : ∀{Γ T} → (count : ArgCount T) → Exp Γ T → PUExp count Γ
-nApp none e = e
-nApp (one count) e = λ x → nApp count (app e (x idRen none))
-
-idSub : ∀{Γ} → Sub Γ Γ
-idSub x ren count
-  = let (y , p) = ren x
-    in nApp count (subst (λ T → Exp _ T) p (var y))
-
-  -- TODO: this might not be possible!!!
-liftSub : ∀{Γ₁ Γ₂ T} → Sub Γ₁ Γ₂ → Sub (Γ₁ , T) (Γ₂ , T)
-liftSub sub same ren count
-  = nApp count let (y , p) = ren same in subst (λ T → Exp _ T) p (var y) -- define using nApp!!!!!!!!!
-liftSub sub (next itc) ren = sub itc (forget1ren ren)
-
--- _∘_ : ∀{l} → {A B C : Set l} → (B → C) → (A → B)→ (A → C)
--- (f ∘ g) x = f (g x)
 _∘_ : ∀{A B C} → Ren A B → Ren B C → Ren A C
 s₁ ∘ s₂ = λ x → let (y , p) = s₁ x
   in let (z , q) = s₂ y
   in z , trans q p
 
-weakenGExp : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → GExp Γ₁ T → GExp Γ₂ T
-weakenGExp ren g ren2 count = g (ren ∘ ren2) count
 
-transSR : ∀{Γ₁ Γ₂ Γ₃} → Sub Γ₁ Γ₂ → Ren Γ₂ Γ₃ → Sub Γ₁ Γ₃
-transSR sub ren x ren₂ = sub x (ren ∘ ren₂)
+-- transSR : ∀{Γ₁ Γ₂ Γ₃} → Sub Γ₁ Γ₂ → Ren Γ₂ Γ₃ → Sub Γ₁ Γ₃
+-- transSR sub ren x ren₂ = sub x (ren ∘ ren₂)
 
 append1sub : ∀{Γ₁ A Γ₂} → Sub Γ₁ Γ₂ → GExp Γ₂ A → Sub (Γ₁ , A) Γ₂
 append1sub sub e same ren = e ren
 append1sub sub e (next x) ren = sub x ren
 
-stonks : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → APUExp Γ₂ T
-stonks (var icx) sub = sub icx idRen -- sub icx
-stonks (lambda e) sub none
-  = lambda (stonks e (liftSub sub) none)
-stonks (lambda e) sub (one count)
-  = λ a → stonks e (append1sub sub a) count
-stonks (app e₁ e₂) sub count
-  = stonks e₁ sub (one count) (λ ren₁ count → stonks e₂ (transSR sub ren₁) count)
-stonks true sub none = true
-stonks false sub none = false
-stonks {∅} (if e e₁ e₂) sub count with stonks e sub none
-... | bla = {! bla  !}
-stonks {Γ₁ , x} (if e e₁ e₂) sub count = {!   !}
-
-normalize : ∀{Γ T} → Exp Γ T → Exp Γ T
-normalize e = stonks e idSub none
-
-e1 : Exp ∅ bool
-e1 = app (lambda (var same)) true
-
-test1 : normalize e1 ≡ true
-test1 = refl
-
-e2 : Exp ∅ bool
-e2 = app (lambda (app (var same) true )) (lambda (var same))
-
-test2 : normalize e2 ≡ true
-test2 = refl
-
-unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → GExp Γ₂ T
-unquote-n (var icx) sub = sub icx
-unquote-n (lambda e) sub ren none
-  = lambda (unquote-n e (liftSub sub) (liftRen ren) none)
-unquote-n (lambda e) sub ren (one count)
-  = λ a → unquote-n e {!   !} ren count
-unquote-n (app e₁ e₂) sub ren count
-  = unquote-n e₁ sub ren (one count) (λ ren₁ count → unquote-n e₂ (transSR sub ren) ren₁ count)
-unquote-n true sub ren none = true
-unquote-n false sub ren none = false
+unquote-n : ∀{Γ T} → Exp Γ T → GExp Γ T
+unquote-n (var icx) sub count = {! sub icx   !}
+unquote-n (lambda e) sub none
+  = lambda {!   !}
+unquote-n (lambda e) sub (one count)
+  = λ a → unquote-n e {!   !} count
+unquote-n (app e₁ e₂) sub count
+  = unquote-n e₁ sub (one count) (λ sub count → unquote-n e₂ {!   !} count)
+unquote-n true sub none = true
+unquote-n false sub none = false
 unquote-n (if e e₁ e₂) = {!   !}
 -- unquote-n (lambda e) sub none = lambda (unquote-n e {!   !} none)
 -- unquote-n (lambda e) sub (one count) = λ a → unquote-n e {!   !} count
