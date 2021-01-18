@@ -12,23 +12,19 @@ data Ctx : Set where
   ∅ : Ctx
   _,_ : Ctx → Type → Ctx
 
-data InCtx : (Γ : Ctx) → Set where
-  same : ∀{Γ T} → InCtx (Γ , T)
-  next : ∀{Γ T} → InCtx Γ → InCtx (Γ , T)
-
-Tat : ∀{Γ} → InCtx Γ → Type
-Tat (same {Γ} {T}) = T
-Tat (next icx) = Tat icx
+data InCtx : (Γ : Ctx) → Type → Set where
+  same : ∀{Γ T} → InCtx (Γ , T) T
+  next : ∀{Γ T A} → InCtx Γ A → InCtx (Γ , T) A
 
 data Exp : Ctx → Type → Set where
-  var : ∀{Γ} → (icx : InCtx Γ) → Exp Γ (Tat icx)
+  var : ∀{Γ T} → (icx : InCtx Γ T) → Exp Γ T
   lambda : ∀{Γ A B} → Exp (Γ , A) B → Exp Γ (A ⇒ B)
   app : ∀{Γ A B} → Exp Γ (A ⇒ B) → Exp Γ A → Exp Γ B
   ⋆ : ∀{Γ} → Exp Γ base
 
 mutual
   data Ne : Ctx → Type → Set where
-    var : ∀{Γ} → (icx : InCtx Γ) → Ne Γ (Tat icx)
+    var : ∀{Γ T} → (icx : InCtx Γ T) → Ne Γ T
     app : ∀{Γ A B} → Ne Γ (A ⇒ B) → Nf Γ A → Ne Γ B
 
   data Nf : Ctx → Type → Set where
@@ -37,25 +33,23 @@ mutual
     ⋆ : ∀{Γ} → Nf Γ base
 
 Ren : Ctx → Ctx → Set
-Ren Γ₁ Γ₂ = (x : InCtx Γ₁) → Σ (InCtx Γ₂) (λ x' → Tat x' ≡ Tat x)
+Ren Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → InCtx Γ₂ T
 
 weaken1Ren : ∀{Γ T} → Ren Γ (Γ , T)
-weaken1Ren ren = (next ren) , refl
+weaken1Ren ren = next ren
 
 forget1ren : ∀{Γ₁ Γ₂ T} → Ren (Γ₁ , T) Γ₂ → Ren Γ₁ Γ₂
 forget1ren ren x = ren (next x)
 
 liftRen : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Ren (Γ₁ , T) (Γ₂ , T)
-liftRen ren same = same , refl
-liftRen ren (next itc) = let (itc' , p) = ren itc
-  in next itc' , p
+liftRen ren same = same
+liftRen ren (next itc) = next (ren itc)
 
 idRen : ∀{Γ} → Ren Γ Γ
-idRen x = x , refl
+idRen x = x
 
 weaken : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Exp Γ₁ T → Exp Γ₂ T
-weaken {Γ₁} {Γ₂} ren (var icx) = let (icx' , p) = ren icx in
-  subst (λ T → Exp Γ₂ T) p (var icx')
+weaken {Γ₁} {Γ₂} ren (var icx) = var (ren icx)
 weaken ren (lambda e) = lambda (weaken (liftRen ren) e)
 weaken ren (app e₁ e₂) = app (weaken ren e₁) (weaken ren e₂)
 weaken ren ⋆ = ⋆
@@ -90,26 +84,21 @@ mutual
 
 
 Sub : Ctx → Ctx → Set
-Sub Γ₁ Γ₂ = (x : InCtx Γ₁) → GExp Γ₂ (Tat x)
+Sub Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → GExp Γ₂ T
 
 nApp : ∀{Γ T} → (count : ArgCount T) → Ne Γ T → PUExp count Γ
 nApp none e = ne e
 nApp (one count) e = λ x → nApp count (app e (x idRen none))
 
 idSub : ∀{Γ} → Sub Γ Γ
-idSub x ren count
-  = let (y , p) = ren x
-    in nApp count (subst (λ T → Ne _ T) p (var y))
+idSub x ren count = nApp count (var (ren x))
 
 liftSub : ∀{Γ₁ Γ₂ T} → Sub Γ₁ Γ₂ → Sub (Γ₁ , T) (Γ₂ , T)
-liftSub sub same ren count
-  = nApp count let (y , p) = ren same in subst (λ T → Ne _ T) p (var y) -- define using nApp!!!!!!!!!
+liftSub sub same ren count = nApp count (var (ren same))
 liftSub sub (next itc) ren = sub itc (forget1ren ren)
 
 _∘_ : ∀{A B C} → Ren A B → Ren B C → Ren A C
-s₁ ∘ s₂ = λ x → let (y , p) = s₁ x
-  in let (z , q) = s₂ y
-  in z , trans q p
+s₁ ∘ s₂ = λ x → s₂ (s₁ x)
 
 transSR : ∀{Γ₁ Γ₂ Γ₃} → Sub Γ₁ Γ₂ → Ren Γ₂ Γ₃ → Sub Γ₁ Γ₃
 transSR sub ren x ren₂ = sub x (ren ∘ ren₂)
