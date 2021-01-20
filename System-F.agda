@@ -144,7 +144,7 @@ data ArgCount : ∀{n Δ Δ'} → Type n Δ → TSub Δ Δ' → Set where
     → ArgCount (⋁ T) sub -- (⋁ T) sub
   -- oneX : ∀{n Δ Δ' x sub} → ArgCount {!  sub x  !} {! idSub  !} → ArgCount {suc n} {Δ} {Δ'} (Var x) sub
   cumu : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'}
-    → ArgCount {n} (subType sub T) idSub → ArgCount T sub
+    → ArgCount {n} (subType sub T) idSub → ArgCount {suc n} (cumu T) sub
 
 -- TODO: TODO: can we just let Δ' = Δ
 -- No. Δ' is the original Δ
@@ -154,48 +154,28 @@ mutual
   PUExp : ∀{n Δ Δ'} → {T : Type n Δ} → (sub : TSub Δ Δ')
     → ArgCount T sub → Ctx Δ → Set
   PUExp {n} {Δ} sub (none {_} {_} {_} {T}) Γ = Exp Δ Γ T -- TODO: should be Nf
-  PUExp sub (one {_} {_} {_} {A} count) Γ = {-(GExp Γ A)-} ⊤ → PUExp sub count Γ
-  PUExp sub (One X count) Γ
-    = PUExp (append1sub sub X) count (renΓ weaken1Δ Γ) -- PUExp {! count  !} {! Γ  !}
-  PUExp {_} {Δ} {Δ'} sub (cumu count) Γ = PUExp idSub count (subΓ sub Γ)
+  PUExp {n} sub (one {_} {_} {_} {A} count) Γ
+    = (GExp {n} Γ sub A) → PUExp {n} sub count Γ
+  PUExp {n} sub (One X count) Γ
+    = PUExp {n} (append1sub sub X) count (renΓ weaken1Δ Γ) -- PUExp {! count  !} {! Γ  !}
+  PUExp {suc n} {Δ} {Δ'} sub (cumu count) Γ = PUExp idSub count (subΓ sub Γ)
 
   -- Exp that can be partially unquoted to any amount
   APUExp : ∀{n Δ Δ'} → Ctx Δ → TSub Δ Δ' → Type n Δ → Set
-  APUExp Γ sub T = (count : ArgCount T sub) → PUExp sub count Γ
+  APUExp {n} Γ sub T = (count : ArgCount T sub) → PUExp {n} sub count Γ
 
   -- Exp that can be in a weaker context AND partially unquoted
   GExp : ∀{n Δ Δ'} → Ctx Δ → TSub Δ Δ' → Type n Δ → Set
-  GExp Γ sub T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' sub T -- NOTE: the key was using Ren instead of Sub here!
-{-
-data ArgCount : ∀{n Δ} → Type n Δ → Set where
-  none : ∀{n Δ T} → ArgCount {n} {Δ} T
-  one : ∀{n Δ A B} → ArgCount B → ArgCount {n} {Δ} (A ⇒ B)
-  One : ∀{n m Δ T} → (X : Type m Δ) -- The fact that this arg is here and not in PUExp reflects that in System-F, types are present in source code and not calculated at runtime.
-    → ArgCount {n} {Δ} (subType (append1sub idSub X) T) → ArgCount (⋁ T)
-    -- TODO: using subType in ArgCount might not be the correct approach.
-    -- Maybe instead it should keep track of type substitutions and
-    -- whenever there is a case with count ≠ none, but T = X, then
-    -- it will use a substitution?
+  GExp {n} Γ sub T = ∀{Γ'} → Ren Γ Γ' → APUExp {n} Γ' sub T -- NOTE: the key was using Ren instead of Sub here!
 
-mutual
-  -- partially unquoted Exp
-  PUExp : ∀{n Δ} → {T : Type n Δ} → ArgCount T → Ctx Δ → Set
-  PUExp {n} {Δ} (none {_} {_} {T}) Γ = Exp Δ Γ T -- TODO: should be Nf
-  PUExp (one {_} {_} {A} count) Γ = (GExp Γ A) → PUExp count Γ
-  -- TODO:
-  -- PUExp (one {_} {_} {A} count) Γ = (Exp Γ A → Set n) → PUExp count Γ
-  -- TODO: try using girard's method here. On left, say any predicate at level n, instead of
-  PUExp (One {_} {m} {Δ} {T} X count) Γ
-    = PUExp {! count  !} {! Γ  !}
-    -- PROBLEM: the output should really be in a type which incorporates
-    -- X. In order to do this (and preserve termination), should incorporate a
-    -- Sub into the type of PUExp I think?
+Sub : ∀{Δ} → Ctx Δ → Ctx Δ → Set
+Sub {Δ} Γ₁ Γ₂ = ∀{n Δ' T} → {tSub : TSub Δ Δ'}
+  → InCtx {n} Γ₁ T → GExp Γ₂ tSub T
 
-  -- Exp that can be partially unquoted to any amount
-  APUExp : ∀{n Δ} → Ctx Δ → Type n Δ → Set
-  APUExp Γ T = (count : ArgCount T) → PUExp count Γ
+-- nApp : ∀{n Δ Δ' Γ T} → {sub : TSub Δ Δ'}
+  -- → (count : ArgCount {n} T sub) → Exp Δ Γ T → PUExp sub count Γ
+-- nApp none e = e
+-- nApp (one count) e = λ x → nApp count (app e (x idRen none))
 
-  -- Exp that can be in a weaker context AND partially unquoted
-  GExp : ∀{n Δ} → Ctx Δ → Type n Δ → Set
-  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
--}
+-- idSub : ∀{Δ Γ} → Sub {Δ} Γ Γ
+-- idSub x ren count = nApp count (var (ren x))
