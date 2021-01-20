@@ -54,25 +54,17 @@ weaken ren (lambda e) = lambda (weaken (liftRen ren) e)
 weaken ren (app e₁ e₂) = app (weaken ren e₁) (weaken ren e₂)
 weaken ren ⋆ = ⋆
 
-data ArgCount : Type → Set where
-  none : ∀{T} → ArgCount T
-  one : ∀{A B} → ArgCount B → ArgCount (A ⇒ B)
-
 mutual
   -- partially unquoted Exp
-  PUExp : ∀{T} → ArgCount T → Ctx → Set
-  PUExp (none {T}) Γ = Nf Γ T
-  PUExp (one {A} count) Γ
-    = (GExp Γ A) → PUExp count Γ
+  PUExp : Ctx → Type → Set
+  PUExp Γ base = Nf Γ base
+  PUExp Γ (A ⇒ B)
+    = (GExp Γ A) → PUExp Γ B
     -- NOTE: maybe in system F here, the R.H.S. can simply be in a larger Δ
-
-  -- Exp that can be partially unquoted to any amount
-  APUExp : Ctx → Type → Set
-  APUExp Γ T = (count : ArgCount T) → PUExp count Γ
 
   -- Exp that can be in a weaker context AND partially unquoted
   GExp : Ctx → Type → Set
-  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
+  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → PUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
 
   -- NOTE: for system F, maybe in PUExp, just keep track of all of the
   -- args and substitute them in the type at the end? YES: see paper. Subs will all be at one type level lower.
@@ -86,15 +78,15 @@ mutual
 Sub : Ctx → Ctx → Set
 Sub Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → GExp Γ₂ T
 
-nApp : ∀{Γ T} → (count : ArgCount T) → Ne Γ T → PUExp count Γ
-nApp none e = ne e
-nApp (one count) e = λ x → nApp count (app e (x idRen none))
+nApp : ∀{Γ T} → Ne Γ T → PUExp Γ T
+nApp {Γ} {base} e = ne e
+nApp {Γ} {A ⇒ B} e = λ x → nApp (app e {! x idRen  !} )
 
 idSub : ∀{Γ} → Sub Γ Γ
-idSub x ren count = nApp count (var (ren x))
+idSub x ren = nApp (var (ren x))
 
 liftSub : ∀{Γ₁ Γ₂ T} → Sub Γ₁ Γ₂ → Sub (Γ₁ , T) (Γ₂ , T)
-liftSub sub same ren count = nApp count (var (ren same))
+liftSub sub same ren = nApp (var (ren same))
 liftSub sub (next itc) ren = sub itc (forget1ren ren)
 
 _∘_ : ∀{A B C} → Ren A B → Ren B C → Ren A C
@@ -107,18 +99,16 @@ append1sub : ∀{Γ₁ A Γ₂} → Sub Γ₁ Γ₂ → GExp Γ₂ A → Sub (Γ
 append1sub sub e same ren = e ren
 append1sub sub e (next x) ren = sub x ren
 
-unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → APUExp Γ₂ T
+unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → PUExp Γ₂ T
 unquote-n (var icx) sub = sub icx idRen -- sub icx
-unquote-n (lambda e) sub none
-  = lambda (unquote-n e (liftSub sub) none)
-unquote-n (lambda e) sub (one count)
-  = λ a → unquote-n e (append1sub sub a) count
-unquote-n (app e₁ e₂) sub count
-  = unquote-n e₁ sub (one count) (λ ren₁ count → unquote-n e₂ (transSR sub ren₁) count)
-unquote-n ⋆ sub none = ⋆
+unquote-n (lambda e) sub
+  = λ a → unquote-n e (append1sub sub a)
+unquote-n (app e₁ e₂) sub
+  = unquote-n e₁ sub (λ ren₁ → unquote-n e₂ (transSR sub ren₁))
+unquote-n ⋆ sub = ⋆
 
 normalize : ∀{Γ T} → Exp Γ T → Nf Γ T
-normalize e = unquote-n e idSub none
+normalize e = {! unquote-n e idSub  !} -- unquote-n e idSub
 
 -- some examples to test it out:
 
