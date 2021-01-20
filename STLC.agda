@@ -74,15 +74,6 @@ mutual
   GExp : Ctx → Type → Set
   GExp Γ T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
 
-  -- NOTE: for system F, maybe in PUExp, just keep track of all of the
-  -- args and substitute them in the type at the end? YES: see paper. Subs will all be at one type level lower.
-
-  -- PUExp is defined by pattern matching.
-  -- It calls itself in two places, one through GExp.
-  -- Call through GExp has    T ↓   count ↑
-  -- Call directly has        T ↑   count ↓     (in STLC it is T ↓)
-
-
 Sub : Ctx → Ctx → Set
 Sub Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → GExp Γ₂ T
 
