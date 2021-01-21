@@ -46,7 +46,19 @@ varSub (next icx) (next x) with varSub icx x
 ... | inj₁ p = inj₁ p
 ... | inj₂ x' = inj₂ (next x')
 
+data ArgCount : Type → Set where
+  none : ∀{T} → ArgCount T
+  one : ∀{A B} → ArgCount B → ArgCount (A ⇒ B)
+
+output : ∀{T} → ArgCount T → Type
+output (none {T}) = T
+output (one count) = output count
+
 mutual
+  inputs : ∀{T} → ArgCount T → Ctx → Set
+  inputs none Γ = ⊤
+  inputs (one {A} count) Γ = Nf Γ A × inputs count Γ
+
   data Ne : Ctx → Type → Set where
     z : ∀{Γ} → Ne Γ Nat
     s : ∀{Γ} → Nf Γ Nat → Ne Γ Nat
@@ -58,18 +70,6 @@ mutual
   data Nf : Ctx → Type → Set where
     lambda : ∀{Γ A B} → Nf (Γ , A) B → Nf Γ (A ⇒ B)
     fromU : ∀{Γ T} → Ne Γ T → Nf Γ T
-
-  data ArgCount : Type → Set where
-    none : ∀{T} → ArgCount T
-    one : ∀{A B} → ArgCount B → ArgCount (A ⇒ B)
-
-  inputs : ∀{T} → ArgCount T → Ctx → Set
-  inputs none Γ = ⊤
-  inputs (one {A} count) Γ = Nf Γ A × inputs count Γ
-
-  output : ∀{T} → ArgCount T → Type
-  output (none {T}) = T
-  output (one count) = output count
 
 weakenV : ∀{Γ T} → (pre : Pre Γ) → (W : Type)
   → Nf Γ T → Nf (weakenΓ pre W) T

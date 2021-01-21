@@ -136,3 +136,47 @@ e4 = lambda (app (lambda (var same)) (var same))
 
 test4 : normalize e4 ≡ lambda (ne (var same))
 test4 = refl
+
+mutual
+  nfToExp : ∀{Γ T} → Nf Γ T → Exp Γ T
+  nfToExp (lambda e) = lambda (nfToExp e)
+  nfToExp (ne u) = neToExp u
+  nfToExp ⋆ = ⋆
+
+  neToExp : ∀{Γ T} → Ne Γ T → Exp Γ T
+  neToExp (var icx) = var icx
+  neToExp (app u v) = app (neToExp u) (nfToExp v)
+
+mutual
+  unquote-n-Nf : ∀{Γ₁ Γ₂ T} → Nf Γ₁ T → Sub Γ₁ Γ₂ → APUExp Γ₂ T
+  unquote-n-Nf (lambda e) sub none
+    = lambda (unquote-n-Nf e (liftSub sub) none)
+  unquote-n-Nf (lambda e) sub (one count)
+    = λ a → unquote-n-Nf e (append1sub sub a) count
+  unquote-n-Nf (ne e) sub count = unquote-n-Ne e sub count
+  unquote-n-Nf ⋆ sub none = ⋆
+
+  unquote-n-Ne : ∀{Γ₁ Γ₂ T} → Ne Γ₁ T → Sub Γ₁ Γ₂ → APUExp Γ₂ T
+  unquote-n-Ne (app e₁ e₂) sub count
+    = unquote-n-Ne e₁ sub (one count) (λ ren₁ count → unquote-n-Nf e₂ (transSR sub ren₁) count)
+  unquote-n-Ne (var icx) sub = sub icx idRen -- sub icx
+
+renToSub : ∀{Γ₁ Γ₂} → Ren Γ₁ Γ₂ → Sub Γ₁ Γ₂
+renToSub ren x ren₁ count = nApp count (var (ren₁ (ren x))) -- var (ren x)
+
+toGExp : ∀{Γ T} → Exp Γ T → GExp Γ T
+toGExp e ren count = unquote-n e (renToSub ren) count
+
+asFunc : GExp ∅ base → Nf ∅ base
+asFunc = unquote-n e4 idSub (one none)
+test4' : asFunc ≡ λ a → a idRen none
+test4' = refl
+
+asFunc2 : Nf ∅ base → Nf ∅ base
+asFunc2 e = unquote-n e4 idSub (one none) (toGExp (nfToExp e))
+
+-- NOTE: I'm trying to see if it's possible to use unquote-n to get a representation
+-- of an expression as a function which is as efficient as the equivalent agda function (by essentially being an Agda function)
+-- essentially, is it possible for the following to work:
+-- test4'' : asFunc2 ≡ λ a → a
+-- test4'' = refl
