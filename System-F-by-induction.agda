@@ -175,13 +175,17 @@ mutual
   inputs sub (One X count) Γ = inputs (append1sub sub X) count Γ
   inputs sub (cumu count) Γ = inputs idSub count Γ
 
-  data Nf : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
-    ne : ∀{n Δ Γ T} → Ne {n} Δ Γ T → Nf {n} Δ Γ T
-    lambda : ∀{n Δ Γ A B} → Nf {n} Δ (Γ , A) B → Nf Δ Γ (A ⇒ B)
-    Tlambda : ∀{Δ n Γ T}
-      → Nf (Δ , n) (renΓ weaken1Δ Γ) T → Nf Δ Γ (⋁ T)
+  data Nf : ∀{n Δ Δ'} → TSub Δ Δ' → Ctx Δ' → Type n Δ' → Set where
+    ne : ∀{n Δ Δ' Γ T} → {sub : TSub Δ Δ'} → Ne {n} sub Γ T → Nf {n} sub Γ T
+    lambda : ∀{n Δ Δ' Γ A B} → {sub : TSub Δ Δ'}
+      → Nf {n} sub (Γ , A) B → Nf sub Γ (A ⇒ B)
+    Tlambda : ∀{Δ Δ' n Γ T} → {sub : TSub Δ Δ'}
+      → Nf {_} {(Δ , n)} {Δ'} (append1sub sub T) Γ T → Nf sub Γ (⋁ {! T  !} )
+    cumu : ∀{Δ Δ' n T Γ} → {sub : TSub Δ Δ'}
+      → Nf {n} idSub Γ {! subType sub T  !} → Nf sub Γ (cumu T)
 
-  data Ne : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
+  data Ne : ∀{n Δ Δ'} → TSub Δ Δ' → Ctx Δ' → Type n Δ' → Set where
+  {-
     -- var : ∀{n Δ Γ T} → InCtx {n} {Δ} Γ T → Ne Δ Γ T
     -- app : ∀{n Δ Γ A B} → Ne {n} Δ Γ (A ⇒ B) → Nf Δ Γ A → Ne Δ Γ B
     TApp : ∀{Δ Γ n} → {T : Type (suc n) (Δ , n)}
@@ -248,3 +252,4 @@ weakenNf' : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
   → (W : Type n Δ')
   → Nf Δ Γ T → Nf {m} Δ' {! weakenΓ pre ?  !}{-weakenΓ pre W-} (subType sub T)
 weakenNf' = {!   !}
+-}
