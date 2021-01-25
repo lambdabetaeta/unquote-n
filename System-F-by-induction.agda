@@ -175,15 +175,15 @@ mutual
       → inputs {n} {Δ} count Γ
       → Ne Δ Γ (output count)
 
--- TODO: call TSub, call the subv ESub. (expression and type)
-subNf : ∀{n Δ₁ Δ₂ Γ T} → (sub : TSub Δ₁ Δ₂)
-  → Nf {n} Δ₁ Γ T
-  → Nf {n} Δ₂ (subΓ sub Γ) (subType sub T)
-subNf sub (lambda e) = lambda (subNf sub e)
-subNf {n} {Δ₁} {Δ₂} {Γ} {T} sub (Tlambda e)
-  = Tlambda {! subNf {n} {Δ₁ , n} {Δ₂ , n} ? ?  !}
-subNf sub (ne (varapp count icx x)) = {!   !}
-subNf sub (cumu e) = {!   !}
+-- -- TODO: call TSub, call the subv ESub. (expression and type)
+-- subNf : ∀{n Δ₁ Δ₂ Γ T} → (sub : TSub Δ₁ Δ₂)
+--   → Nf {n} Δ₁ Γ T
+--   → Nf {n} Δ₂ (subΓ sub Γ) (subType sub T)
+-- subNf sub (lambda e) = lambda (subNf sub e)
+-- subNf {n} {Δ₁} {Δ₂} {Γ} {T} sub (Tlambda e)
+--   = Tlambda {! subNf {n} {Δ₁ , n} {Δ₂ , n} ? ?  !}
+-- subNf sub (ne (varapp count icx x)) = {!   !}
+-- subNf sub (cumu e) = {!   !}
 
 subCtx : ∀{n Δ Γ T} → (icx : InCtx {n} {Δ} Γ T) → Ctx Δ
 subCtx (same {_} {_} {Γ}) =  Γ
@@ -203,80 +203,108 @@ varSub (next icx) (next x) with varSub icx x
 ... | inj₁ p = inj₁ p
 ... | inj₂ x' = inj₂ (next x')
 
--- idSubFact1 : ∀{Δ n} → idSub {Δ , n} ∼ (liftTSub idSub)
--- idSubFact1 = {!   !}
+-- extention
+TCtxExt : TCtx → ℕ → Set
+TCtxExt Δ n = ℕ -- n is type level, the output ℕ is the number of things in the extention
 
--- idSubFact : ∀{n Δ₁ Δ₂} → (T : Type n Δ₁) → T ≡ subType idSub T
--- idSubFact (Var x) = refl
--- idSubFact (A ⇒ B) = cong₂ (_⇒_) (idSubFact A) (idSubFact B)
--- idSubFact (⋁ T) = {! cong ⋁ (idSubFact T)  !}
--- idSubFact (cumu T) = cong cumu (idSubFact T)
+extend : ∀{Δ n} → TCtxExt Δ n → TCtx
+extend {Δ₁} {n} 0 = Δ₁
+extend {Δ₁} {n} (suc ext) = (extend {Δ₁} {n} ext) , n
 
-{-
-mutual
-  --             ↓
-  subv : ∀{n m Δ Δ' Γ Te Tsub Tsub'} → {sub : TSub Δ' Δ}
-    → Tsub' ≡ subType sub Tsub
-    → (icx : InCtx {n} {Δ} Γ Tsub')
-    → (toSub : Nf Δ (subCtx icx) Tsub')
-    → Nf {m} Δ Γ Te → Nf Δ (subCtx icx) Te
-  subv = {!   !}
-  --           ↓           ↓                ↓   makes a Typo
-  appv : ∀{n Δ Δ' Γ T'} → (T : Type n Δ') → (sub : TSub Δ' Δ)
-    → T' ≡ subType sub T
-    → (e : Nf {n} Δ Γ T')
-    → (count : ArgCount T')
-    → inputs count Γ
-    → Nf Δ Γ (output count)
-  appv T sub p (lambda e) none tt = lambda e
-  appv (A ⇒ B) sub p (lambda e) (one count) (a , inputs)
-    -- = appv B idSub (idSubFact B) (subv (idSubFact A) same a e) count inputs
-    = appv B {!   !} {!   !} {!   !} count inputs
-  appv (⋁ T) sub p (Tlambda e) none tt = Tlambda e
-  appv (⋁ T) sub p (Tlambda e) (One X count) inputs
-    = {!   !}
-    -- = appv (append1sub sub X) {!   !} {! e  !} {! count  !} inputs
-  appv T sub p (ne x) count inputs = {!   !}
+ExtSub : ∀{Δ n} → TCtxExt Δ n → Set
+ExtSub 0 = ⊤
+ExtSub {Δ} {n} (suc ext) = ExtSub {Δ} {n} ext × Type n Δ
 
-  -- can't split on e, because not proper induction.
-  -- NOTE : this proves that we can't use this design, need Nf and Ne
-  -- to be parametrized by Typo, not just Type.
--}
+-- left case means n ≡ m, and getting result from ext
+varExtSub : ∀{Δ n m A B} → (ext : TCtxExt Δ n) → (sub : ExtSub {Δ} {n} ext)
+  → (icx : InTCtx (extend {Δ} {n} ext) m)
+  → (Type m Δ) ⊎ (InTCtx Δ m)
+varExtSub zero sub icx = inj₂ icx
+varExtSub (suc ext) sub icx = {!   !}
 
-mutual
-  --             ↓
-  -- subv1 : ∀{n m Δ Δ' Γ Te Tsub Tsub'} → {sub : TSub Δ' Δ}
-  --   → Tsub' ≡ subType sub Tsub
-  --   → (icx : InCtx {n} {Δ} Γ Tsub')
-  --   → (toSub : Nf Δ (subCtx icx) Tsub')
-  --   → Nf {m} Δ Γ Te → Nf Δ (subCtx icx) Te
-  -- subv1 = {!   !}
-  --           ↓           ↓                ↓   makes a Typo
-  appv1 : ∀{n Δ Δ' Γ} → (T : Type n Δ') → (sub : TSub Δ' Δ)
-    → (e : Nf {n} Δ' Γ T)
-    → (count : ArgCount T) -- TODO: wrong, wont allow full application of e.g. ∀X . X → X
-    → inputs count Γ
-    → Nf Δ (subΓ sub Γ) (subType sub (output count))
-  appv1 (A ⇒ B) sub (lambda e) none tt = subNf sub (lambda e)
-  appv1 (A ⇒ B) sub (lambda e) (one count) (a , inputs)
-    = appv1 B sub {! subv1 sub a e  !} count inputs
-  appv1 (⋁ T) sub (Tlambda e) none tt = subNf sub (Tlambda e)
-  appv1 (⋁ T) sub (Tlambda e) (One X count) inputs
-    = let a = appv1 T (append1sub sub (subType sub X))
-              e count inputs
-      in {! a  !} -- Same as lambda case, need to do sub and app. Just that its a type sub!
-  appv1 T sub (ne x) count inputs = {!   !}
-  appv1 (cumu T) sub (cumu e) none inputs = subNf sub (cumu e)
-  appv1 (cumu T) sub (cumu e) (cumu count) inputs
-    = appv1 T sub e count inputs -- TODO this is wrong, should be applying sub.
+subExtType : ∀{Δ n m} → (ext : TCtxExt Δ n) → ExtSub {Δ} {n} ext →
+  Type m (extend {Δ} {n} ext) → Type m Δ
+subExtType {_} {n} {m} ext sub (Var x) = {!  Var x !}
+subExtType {_} {n} {m} ext sub (A ⇒ B)
+  = (subExtType ext sub A) ⇒ (subExtType ext sub B)
+subExtType {_} {n} {.(suc _)} ext sub (⋁ T) = ⋁ (subExtType {!   !} {!   !} T)
+subExtType {_} {n} {.(suc _)} ext sub (cumu T) = {!   !}
+
+-- mutual
+  -- appv : ∀{n Δ Γ T} → (ext : TCtxExt Δ) → (sub : ExtSub {Δ} ext)
+    -- → Nf {n} Δ Γ (subExt sub T)
+
+-- mutual
+--   --             ↓
+--   -- subv1 : ∀{n m Δ Δ' Γ Te Tsub Tsub'} → {sub : TSub Δ' Δ}
+--   --   → Tsub' ≡ subType sub Tsub
+--   --   → (icx : InCtx {n} {Δ} Γ Tsub')
+--   --   → (toSub : Nf Δ (subCtx icx) Tsub')
+--   --   → Nf {m} Δ Γ Te → Nf Δ (subCtx icx) Te
+--   -- subv1 = {!   !}
+--   --           ↓           ↓                ↓   makes a Typo
+--   appv1 : ∀{n Δ Δ' Γ} → (T : Type n Δ') → (sub : TSub Δ' Δ)
+--     → (e : Nf {n} Δ Γ (subType sub T))
+--     → (count : ArgCount (subType sub T)) -- TODO: wrong, wont allow full application of e.g. ∀X . X → X
+--     → inputs count Γ
+--     → Nf Δ Γ (output count)
+--   appv1 (A ⇒ B) sub (lambda e) none tt = {!   !} -- subNf sub (lambda e)
+--   appv1 (A ⇒ B) sub (lambda e) (one count) (a , inputs)
+--     = appv1 B sub {! subv1 sub a e  !} count inputs
+--   appv1 (⋁ T) sub (Tlambda e) none tt = {!   !} -- subNf sub (Tlambda e)
+--   appv1 (⋁ T) sub (Tlambda e) (One X count) inputs
+--     = let a = appv1 T (append1sub sub X)
+--               {!   !} {!   !} {-count-} inputs
+--       in {! a  !} -- Same as lambda case, need to do sub and app. Just that its a type sub!
+--   appv1 T sub (ne x) count inputs = {!   !}
+--   appv1 (cumu T) sub (cumu e) none inputs = {!   !} -- subNf sub (cumu e)
+--   appv1 (cumu T) sub (cumu e) (cumu count) inputs
+--     = appv1 T sub e count inputs -- TODO this is wrong, should be applying sub.
 
 
 {-
 TODO
 
-Where I'm at in this file is rethinking how the proof works on paper and trying
-to make it happen here.
+1) The idea of this file is to have only appv and subv actually use Typos,
+  everything else is just parametrized by regular stuff. But then, that means
+  that Agda must be able to know that (subType sub T) can e.g. only give
+  an ⇒ from an ⇒, and not from a Var. To do this, the sub must keep track of
+  levels better. Because we will have the type of the sub be one less than the
+  level of the type, so it could not come from a Var.
 
--- Implement subNf, which should be called TsubNf
+
+-------------------------------------------------------------------------------
+  "PAPER" PROOF:
+
+  If n = 0, then proof from S.T.L.C suffices, as no ∀ types.
+  For all level n ≥ 1, for all typos (T , sub) where sub has vars at
+  level (n-1) and for all e : sub(T), I will define
+  (app e e₁ e₂ ... eₙ) for well types args, as well as
+  e'[x ↦ e] for any well typed e'.
+
+  The latter is easy, as it only depends on the former.
+
+  For the former, cases on T:
+  -- T = A ⇒ B. So, sub(T) = sub(A) ⇒ sub(B)
+    then e = λ x . e' : sub(A) ⇒ sub(B)
+    e₁ : A. Recurse with (n, A, sub, e₁) to get e'[x ↦ e₁] : B.
+    Next, recurse with (n, B, sub, e'[x ↦ e₁]) to apply rest of args.
+  -- T = ∀ X . A.   So, sub(T) = ∀ X . sub(A)
+    then e = Λ X . e'  : ∀ X . sub(A)
+    e₁ = A is a type.
+    recurse on (n, A, sub ⊎ [X ↦ A] , e') to apply rest of args.
+    NOTE: that A is at level (n-1), and so can only come up after a cumu.
+    Therefore, X will be subbed for A by the time it comes up.
+  -- T = X.  So sub(X) = X
+    the can't be any well typed args. Keep in mind that X is at level n,
+    and so sub(X) = X.
+  -- T = cumu A. So, sub(cumu A) = sub(A)
+    then e = cumu e'. Simply recurse with [n-1, sub(A), idSub, e']
+-------------------------------------------------------------------------------
+
+So, the takeaway is that it is crucial that sub be defined in a way so that
+e.g. sub(A ⇒ B) = sub(A) ⇒ sub(B) is DEFINITIONALLY true.
+
+We also need sub(X) = X, for X at level n+1 and sub at level n. DEFINITIONALLY
 
 -}

@@ -178,46 +178,35 @@ output {_} {Δ} (Δ' , sub , cumu T) (cumu count)
   -- to have outputN, which determines the outputN, rather than using cumu constructor
   -- in output.
 
-  --            ↓       ↓                  ↓   make Typo
-outputΓ : ∀{n Δ Δ'} → {sub : TSub Δ' Δ} → (T : Type n Δ')
-  → (count : ArgCount2 (Δ' , sub , T))
-  → Ctx Δ' → Ctx (proj₁ (output _ count))
-outputΓ T none Γ = Γ
-outputΓ (A ⇒ B) (one count) Γ = outputΓ B count Γ
-outputΓ (⋁ T) (One X count) Γ = outputΓ T count (renΓ weaken1Δ Γ)
-outputΓ {_} {_} {_} {sub} (cumu T) (cumu count) Γ
-  = outputΓ (subType sub T) count (subΓ sub Γ)
-
--- TODO: need all Contexts to be in Δ instead of Δ'
 mutual
   --           THIS↓  THIS↓                    and THIS↓     make a Typo
-  data Nf : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ' → Type n Δ' → Set where
+  data Nf : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ → Type n Δ' → Set where
     lambda : ∀{n Δ Δ' Γ A B} → {sub : TSub Δ' Δ}
-      → Nf {n} sub (Γ , A) B → Nf sub Γ (A ⇒ B)
+      → Nf {n} sub (Γ , subType sub A) B → Nf sub Γ (A ⇒ B)
     Tlambda : ∀{Δ Δ' n Γ T} → {sub : TSub Δ' Δ} -- TODO: I got Tlambda case to typecheck, but is it correct?
       → Nf {suc n} {Δ , n} {Δ' , n} (liftTSub sub) (renΓ weaken1Δ Γ) T
       → Nf {suc n} {Δ} {Δ'} sub Γ (⋁ T)
     cumu : ∀{Δ Δ' n T Γ} → {sub : TSub Δ' Δ}
-      → Nf {n} {Δ} {Δ} idSub (subΓ sub Γ) (subType sub T)
+      → Nf {n} {Δ} {Δ} idSub Γ (subType sub T)
       → Nf {suc n} {Δ} {Δ'} sub Γ (cumu T)
     ne : ∀{n Δ Δ' Γ T} → {sub : TSub Δ Δ'} → Ne {n} sub Γ T → Nf {n} sub Γ T
 
-  data Ne : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ' → Type n Δ' → Set where
+  data Ne : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ → Type n Δ' → Set where
     --             ↓         ↓                  ↓ makes a Typo
     varapp : ∀{n Δ Δ' Γ} → (sub : TSub Δ' Δ) → (T : Type n Δ')
       → (count : ArgCount2 (Δ' , sub , T))
-      → (icx : InCtx Γ T)
+      → (icx : InCtx Γ (subType sub T)) -- TODO TODO TODO: seems like we need InCtx to be parametrized by Typo?
       → inputs sub _ count Γ
       → let (Δ'out , subout , Tout) = output (Δ' , sub , T) count
-        in Ne subout (outputΓ _ count Γ) Tout
-
+        in Ne subout Γ Tout
   -- TODO: maybe merge inputs and ArgCount, currently ArgCount holds TApp args, while inputs holds app args. Maybe ArgCount should just hold all args?
   inputs : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → (T : Type n Δ')
-    → ArgCount2 (Δ' , sub , T) → Ctx Δ' → Set
+    → ArgCount2 (Δ' , sub , T) → Ctx Δ → Set
   inputs sub T none Γ = ⊤
   inputs sub (A ⇒ B) (one count) Γ = Nf sub Γ A × inputs sub B count Γ
-  inputs sub (⋁ T) (One X count) Γ = inputs (append1sub sub X) T count (renΓ weaken1Δ Γ) -- TODO: again, is this correct?
-  inputs sub (cumu T) (cumu count) Γ = inputs idSub (subType sub T) count (subΓ sub Γ)
+  inputs sub (⋁ T) (One X count) Γ = inputs (append1sub sub X) T count Γ -- TODO: again, is this correct?
+  inputs sub (cumu T) (cumu count) Γ = inputs idSub (subType sub T) count Γ
+
 
 subCtx : ∀{n Δ Γ T} → (icx : InCtx {n} {Δ} Γ T) → Ctx Δ
 subCtx (same {_} {_} {Γ}) =  Γ
@@ -243,8 +232,8 @@ subTrans sub₁ sub₂ x = subType sub₂ (sub₁ x)
 --                ↓    ↓      ↓  make the Typo
 subNf : ∀{n Δ₁ Δ₂ Δ' Γ T} → {subT : TSub Δ' Δ₁} → (sub : TSub Δ₁ Δ₂)
   → Nf {n} {Δ₁} {Δ'} subT Γ T
-  → Nf {n} {Δ₂} {Δ'} (subTrans subT sub) Γ T
-subNf sub (lambda e) = lambda (subNf sub e)
+  → Nf {n} {Δ₂} {Δ'} (subTrans subT sub) (subΓ sub Γ) T
+subNf sub (lambda e) = {!   !} -- lambda (subNf sub {! e  !} ) -- lambda (subNf sub e)
 subNf sub (Tlambda e) = Tlambda {! subNf ? e  !}
 subNf sub (cumu e) = cumu {! subNf sub e  !}
 subNf sub (ne x) = {!   !}
@@ -263,7 +252,7 @@ mutual
     → (count : ArgCount2 (Δ' , sub , T))
     → inputs sub T count Γ
     → let (Δ'out , subout , Tout) = output _ count
-      in  Nf subout (outputΓ _ count Γ) Tout
+      in  Nf subout Γ Tout
   appv (lambda e) none tt = lambda e
   appv (lambda e) (one count) (a , inputs)
     -- = appv (subv same a e) count inputs
@@ -271,14 +260,13 @@ mutual
   appv (Tlambda e) none tt = Tlambda e
   appv {_} {_} {_} {_} {_} {sub} (Tlambda e) (One X count) inputs
     -- = let a = subNf (append1sub sub X) {! e  !} in {!   !}
-    = let a = subNf (append1sub {!   !} X) e in {!   !}
+    = let a = subNf (append1sub {! sub  !} X) e in {!   !}
     -- = appv {! subNf (append1sub sub X) e  !} count inputs
   appv (cumu e) none tt = cumu e
   appv (cumu e) (cumu count) inputs
     = appv {_} {_} {_} {_} {_} {idSub} e count inputs -- idSub arg unecessary, just to show how it works!
   appv (ne (varapp sub T count₁ icx inputs₁)) count inputs₂
     = {!   !}
-
 
 {-
 
