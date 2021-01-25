@@ -127,75 +127,63 @@ does this reduce the expressiveness of the language at all?
 ∀₀ X . (∀₁ Y . Y) → X
 -}
 
--- TODO: really want TSub to only contain types at level < n.
-data ArgCount : ∀{n Δ Δ'} → Type n Δ → TSub Δ Δ' → Set where
-  none : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'} → ArgCount {n} {Δ} {Δ'} T sub
-  one : ∀{n Δ Δ' A B} → {sub : TSub Δ Δ'} → ArgCount B sub
-    → ArgCount {n} {Δ} {Δ'} (A ⇒ B) sub
-  One : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'} → (X : Type n Δ') -- TODO: should this really be in Δ'
-    → ArgCount {_} {Δ , n} {Δ'} T (append1sub sub X)
-    → ArgCount (⋁ T) sub
-  cumu : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'}
-    → ArgCount {n} (subType sub T) idSub → ArgCount {suc n} (cumu T) sub
+-- TODO: in this file, going to use Typo specifically only for appv and subv
 
-output : ∀{n Δ Δ' T} → (sub : TSub Δ Δ') → ArgCount {n} T sub → Type n Δ'
-output {_} {_} {_} {T} sub none = subType sub T
-output sub (one count) = output sub count
-output sub (One X count) = output (append1sub sub X) count
-output sub (cumu count) = cumu (output idSub count)
+data ArgCount : ∀{n Δ} → Type n Δ → Set where
+  none : ∀{n Δ T} → ArgCount {n} {Δ} T
+  one : ∀{n Δ A B} → ArgCount B → ArgCount {n} {Δ} (A ⇒ B)
+  One : ∀{n Δ T} → (X : Type n Δ)
+    → ArgCount {_} {Δ , n} T → ArgCount (⋁ T)
+  cumu : ∀{n Δ T}
+    → ArgCount {n} {Δ} T → ArgCount {suc n} (cumu T)
 
--- TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO
--- QUESTION: can I define some kind of special induction which captures the
--- pattern of "Induction on types, but keep track of sub, and every time
---  that you hit a cumu case, use sub before recursing"
--- TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO: TODO
+outputN : ∀{n Δ T} → ArgCount {n} {Δ} T → ℕ
+outputN {n} none = n
+outputN (one count) = outputN count
+outputN (One X count) = outputN count
+outputN (cumu count) = outputN count
 
--- typeInd : ∀{n Δ} → (T : Type n Δ) → (P : ∀{n Δ} → Type n Δ → Set)
---   → (∀{n Δ A B} → P A → P B → P {n} {Δ} (A ⇒ B))
---   → (∀{} → P)
---   → P T
--- typeInd = {!   !}
-
--- -- This holds the args instead of just the count
--- data Args : ∀{n Δ Δ'} → Ctx Δ' → Type n Δ → TSub Δ Δ' → Set where
---   none : ∀{n Δ Δ' T Γ} → {sub : TSub Δ Δ'} → ArgCount {n} {Δ} {Δ'} T sub
---   one : ∀{n Δ Δ' A B} → {sub : TSub Δ Δ'} → ArgCount B sub
---     → -- This should be the only difference
---     → ArgCount {n} {Δ} {Δ'} (A ⇒ B) sub
---   One : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'} → (X : Type n Δ') -- TODO: should this really be in Δ'
---     → ArgCount {_} {Δ , n} {Δ'} T (append1sub sub X)
---     → ArgCount (⋁ T) sub
---   cumu : ∀{n Δ Δ' T} → {sub : TSub Δ Δ'}
---     → ArgCount {n} (subType sub T) idSub → ArgCount {suc n} (cumu T) sub
+output : ∀{n Δ T} → (count : ArgCount {n} {Δ} T) → Type (outputN count) Δ
+output (none {_} {_} {T}) = T
+output (one count) = output count
+-- TODO: might have to do sub with Pre here to fit with later?
+output (One X count) = subType (append1sub idSub X) (output count)
+output (cumu count) = output count
 
 mutual
-  inputs : ∀{n Δ Δ' T} → (sub : TSub Δ Δ') → ArgCount {n} T sub → Ctx Δ' → Set
-  inputs sub none Γ = ⊤
-  inputs sub (one {_} {_} {_} {A} count) Γ = Nf _ Γ (subType sub A) × inputs sub count Γ
-  inputs sub (One X count) Γ = inputs (append1sub sub X) count Γ
-  inputs sub (cumu count) Γ = inputs idSub count Γ
+  inputs : ∀{n Δ T} → ArgCount {n} {Δ} T → Ctx Δ → Set
+  inputs none Γ = ⊤
+  inputs (one {_} {_} {A} count) Γ = Nf _ Γ A × inputs count Γ
+  -- TODO: again, might have issues with Pre stuff later?
+  inputs (One X count) Γ = inputs count (renΓ weaken1Δ Γ)
+  inputs (cumu count) Γ = inputs count Γ
+  -- inputs none Γ = ⊤
+  -- inputs (one {A} count) Γ = Nf Γ A × inputs count Γ
 
-  data Nf : ∀{n Δ Δ'} → TSub Δ Δ' → Ctx Δ' → Type n Δ' → Set where
-    ne : ∀{n Δ Δ' Γ T} → {sub : TSub Δ Δ'} → Ne {n} sub Γ T → Nf {n} sub Γ T
-    lambda : ∀{n Δ Δ' Γ A B} → {sub : TSub Δ Δ'}
-      → Nf {n} sub (Γ , A) B → Nf sub Γ (A ⇒ B)
-    Tlambda : ∀{Δ Δ' n Γ T} → {sub : TSub Δ Δ'}
-      → Nf {_} {(Δ , n)} {Δ'} (append1sub sub T) Γ T → Nf sub Γ (⋁ {! T  !} )
-    cumu : ∀{Δ Δ' n T Γ} → {sub : TSub Δ Δ'}
-      → Nf {n} idSub Γ {! subType sub T  !} → Nf sub Γ (cumu T)
+  data Nf : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
+    lambda : ∀{n Δ Γ A B} → Nf {n} Δ (Γ , A) B → Nf Δ Γ (A ⇒ B)
+    Tlambda : ∀{Δ n Γ T}
+      → Nf (Δ , n) (renΓ weaken1Δ Γ) T → Nf Δ Γ (⋁ T)
+    ne : ∀{n Δ Γ T} → Ne {n} Δ Γ T → Nf Δ Γ T
+    cumu : ∀{Δ n T Γ}
+      → Nf {n} Δ Γ T
+      → Nf {suc n} Δ Γ (cumu T)
 
-  data Ne : ∀{n Δ Δ'} → TSub Δ Δ' → Ctx Δ' → Type n Δ' → Set where
-  {-
-    -- var : ∀{n Δ Γ T} → InCtx {n} {Δ} Γ T → Ne Δ Γ T
-    -- app : ∀{n Δ Γ A B} → Ne {n} Δ Γ (A ⇒ B) → Nf Δ Γ A → Ne Δ Γ B
-    TApp : ∀{Δ Γ n} → {T : Type (suc n) (Δ , n)}
-      → Ne Δ Γ (⋁ T) → (X : Type n Δ)
-      → Ne Δ Γ (subType (append1sub idSub X) T)
-    varapp : ∀{n Δ Γ} → {T : Type n Δ}
-      → (count : ArgCount T idSub)
+  data Ne : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
+    varapp : ∀{n Δ Γ T} → (count : ArgCount T)
       → (icx : InCtx Γ T)
-      → inputs idSub count Γ
-      → Ne Δ Γ (output idSub count)
+      → inputs {n} {Δ} count Γ
+      → Ne Δ Γ (output count)
+
+-- TODO: call TSub, call the subv ESub. (expression and type)
+subNf : ∀{n Δ₁ Δ₂ Γ T} → (sub : TSub Δ₁ Δ₂)
+  → Nf {n} Δ₁ Γ T
+  → Nf {n} Δ₂ (subΓ sub Γ) (subType sub T)
+subNf sub (lambda e) = lambda (subNf sub e)
+subNf {n} {Δ₁} {Δ₂} {Γ} {T} sub (Tlambda e)
+  = Tlambda {! subNf {n} {Δ₁ , n} {Δ₂ , n} ? ?  !}
+subNf sub (ne (varapp count icx x)) = {!   !}
+subNf sub (cumu e) = {!   !}
 
 subCtx : ∀{n Δ Γ T} → (icx : InCtx {n} {Δ} Γ T) → Ctx Δ
 subCtx (same {_} {_} {Γ}) =  Γ
@@ -204,16 +192,6 @@ subCtx (next {_} {_} {_} {_} {_} {T} icx) = subCtx icx , T
 data Pre : ∀{Δ} → Ctx Δ → Set where
   same : ∀{Δ Γ} → Pre {Δ} Γ
   next : ∀{Δ Γ n} → {T : Type n Δ} → Pre {Δ} Γ → Pre (Γ , T)
-
-weakenΓ : ∀{Δ n Γ} → Pre {Δ} Γ → Type n Δ → Ctx Δ
-weakenΓ (same {_} {Γ}) A = Γ , A
-weakenΓ (next {_} {Γ} {_} {T} pre) A = (weakenΓ pre A) , T
-
-weakenICX : ∀{Δ n m Γ T} → (pre : Pre {Δ} Γ) → (W : Type n Δ)
-  → (icx : InCtx {m} Γ T) → InCtx (weakenΓ pre W) T
-weakenICX same W x = next x
-weakenICX (next pre) W same = same
-weakenICX (next pre) W (next x) = next (weakenICX pre W x)
 
 -- nothing means use toSub, just means just adjust x for new context.
 varSub : ∀{Δ Γ n A B} → (icx : InCtx {n} {Δ} Γ A)
@@ -225,31 +203,80 @@ varSub (next icx) (next x) with varSub icx x
 ... | inj₁ p = inj₁ p
 ... | inj₂ x' = inj₂ (next x')
 
-weakenNf : ∀{n m Δ Γ T} → (pre : Pre Γ) → (W : Type n Δ)
-  → Nf Δ Γ T → Nf {m} Δ (weakenΓ pre W) T
+-- idSubFact1 : ∀{Δ n} → idSub {Δ , n} ∼ (liftTSub idSub)
+-- idSubFact1 = {!   !}
 
-weakenInputs : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
-  → (W : Type n Δ')
-  → (count : ArgCount {m} T sub)
-  → inputs sub count Γ
-  → inputs sub count (weakenΓ pre W)
-weakenInputs pre W none inputs = tt
-weakenInputs pre W (one count) (e , inputs)
-  = weakenNf pre W e , weakenInputs pre W count inputs
-weakenInputs pre W (One X count) inputs = weakenInputs pre W count inputs
-weakenInputs pre W (cumu count) inputs = weakenInputs pre W count inputs
+-- idSubFact : ∀{n Δ₁ Δ₂} → (T : Type n Δ₁) → T ≡ subType idSub T
+-- idSubFact (Var x) = refl
+-- idSubFact (A ⇒ B) = cong₂ (_⇒_) (idSubFact A) (idSubFact B)
+-- idSubFact (⋁ T) = {! cong ⋁ (idSubFact T)  !}
+-- idSubFact (cumu T) = cong cumu (idSubFact T)
 
-weakenNe : ∀{n m Δ Γ T} → (pre : Pre Γ) → (W : Type n Δ)
-  → Ne Δ Γ T → Ne {m} Δ (weakenΓ pre W) T
-weakenNe pre W (TApp e X) = TApp (weakenNe pre W e) X
-weakenNe pre W (varapp count x inputs)
-  = varapp count (weakenICX pre W x) (weakenInputs pre W count inputs)
-weakenNf pre W (ne e) = ne (weakenNe pre W e)
-weakenNf pre W (lambda v) = lambda (weakenNf (next pre) W v)
-weakenNf pre W (Tlambda e) = Tlambda {! weakenNf ? ? e !}
+{-
+mutual
+  --             ↓
+  subv : ∀{n m Δ Δ' Γ Te Tsub Tsub'} → {sub : TSub Δ' Δ}
+    → Tsub' ≡ subType sub Tsub
+    → (icx : InCtx {n} {Δ} Γ Tsub')
+    → (toSub : Nf Δ (subCtx icx) Tsub')
+    → Nf {m} Δ Γ Te → Nf Δ (subCtx icx) Te
+  subv = {!   !}
+  --           ↓           ↓                ↓   makes a Typo
+  appv : ∀{n Δ Δ' Γ T'} → (T : Type n Δ') → (sub : TSub Δ' Δ)
+    → T' ≡ subType sub T
+    → (e : Nf {n} Δ Γ T')
+    → (count : ArgCount T')
+    → inputs count Γ
+    → Nf Δ Γ (output count)
+  appv T sub p (lambda e) none tt = lambda e
+  appv (A ⇒ B) sub p (lambda e) (one count) (a , inputs)
+    -- = appv B idSub (idSubFact B) (subv (idSubFact A) same a e) count inputs
+    = appv B {!   !} {!   !} {!   !} count inputs
+  appv (⋁ T) sub p (Tlambda e) none tt = Tlambda e
+  appv (⋁ T) sub p (Tlambda e) (One X count) inputs
+    = {!   !}
+    -- = appv (append1sub sub X) {!   !} {! e  !} {! count  !} inputs
+  appv T sub p (ne x) count inputs = {!   !}
 
-weakenNf' : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
-  → (W : Type n Δ')
-  → Nf Δ Γ T → Nf {m} Δ' {! weakenΓ pre ?  !}{-weakenΓ pre W-} (subType sub T)
-weakenNf' = {!   !}
+  -- can't split on e, because not proper induction.
+  -- NOTE : this proves that we can't use this design, need Nf and Ne
+  -- to be parametrized by Typo, not just Type.
+-}
+
+mutual
+  --             ↓
+  -- subv1 : ∀{n m Δ Δ' Γ Te Tsub Tsub'} → {sub : TSub Δ' Δ}
+  --   → Tsub' ≡ subType sub Tsub
+  --   → (icx : InCtx {n} {Δ} Γ Tsub')
+  --   → (toSub : Nf Δ (subCtx icx) Tsub')
+  --   → Nf {m} Δ Γ Te → Nf Δ (subCtx icx) Te
+  -- subv1 = {!   !}
+  --           ↓           ↓                ↓   makes a Typo
+  appv1 : ∀{n Δ Δ' Γ} → (T : Type n Δ') → (sub : TSub Δ' Δ)
+    → (e : Nf {n} Δ' Γ T)
+    → (count : ArgCount T) -- TODO: wrong, wont allow full application of e.g. ∀X . X → X
+    → inputs count Γ
+    → Nf Δ (subΓ sub Γ) (subType sub (output count))
+  appv1 (A ⇒ B) sub (lambda e) none tt = subNf sub (lambda e)
+  appv1 (A ⇒ B) sub (lambda e) (one count) (a , inputs)
+    = appv1 B sub {! subv1 sub a e  !} count inputs
+  appv1 (⋁ T) sub (Tlambda e) none tt = subNf sub (Tlambda e)
+  appv1 (⋁ T) sub (Tlambda e) (One X count) inputs
+    = let a = appv1 T (append1sub sub (subType sub X))
+              e count inputs
+      in {! a  !} -- Same as lambda case, need to do sub and app. Just that its a type sub!
+  appv1 T sub (ne x) count inputs = {!   !}
+  appv1 (cumu T) sub (cumu e) none inputs = subNf sub (cumu e)
+  appv1 (cumu T) sub (cumu e) (cumu count) inputs
+    = appv1 T sub e count inputs -- TODO this is wrong, should be applying sub.
+
+
+{-
+TODO
+
+Where I'm at in this file is rethinking how the proof works on paper and trying
+to make it happen here.
+
+-- Implement subNf, which should be called TsubNf
+
 -}

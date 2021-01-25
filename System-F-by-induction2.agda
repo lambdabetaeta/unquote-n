@@ -138,17 +138,6 @@ can be represented in a way that is a STRUCTURAL SUBEXPRESSION of T.
 Thus the proof can be done with simple induction principles.
 -}
 
---                      (          Typo             )
-data ArgCount : ∀{n Δ Δ'} → Type n Δ' → TSub Δ' Δ → Set where
-  none : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ} → ArgCount {n} {Δ} {Δ'} T sub
-  one : ∀{n Δ Δ' A B} → {sub : TSub Δ' Δ} → ArgCount B sub
-    → ArgCount {n} {Δ} {Δ'} (A ⇒ B) sub
-  One : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ} → (X : Type n Δ) -- TODO: should this really be in Δ'
-    → ArgCount T (append1sub sub X)
-    → ArgCount (⋁ T) sub
-  cumu : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ}
-    → ArgCount {n} (subType sub T) idSub → ArgCount {suc n} (cumu T) sub
-
 Typo : ℕ → TCtx → Set -- TODO: change name
 Typo n Δ = Σ TCtx (λ Δ' → TSub Δ' Δ × Type n Δ')
 -- So, the idea is that some Typos are equivalent
@@ -160,34 +149,34 @@ Typo n Δ = Σ TCtx (λ Δ' → TSub Δ' Δ × Type n Δ')
 -- because in the cumu case, all subs are applied. And you must go down a level before
 -- getting to X anyway, as it is at one level lower.
 
-cumuTypo : ∀{n Δ} → Typo n Δ → Typo (suc n) Δ
-cumuTypo (Δ' , sub , T) = Δ' , sub , cumu T
-
 data ArgCount2 : ∀{n Δ} → Typo n Δ → Set where
   none : ∀{n Δ} → {T : Typo n Δ} → ArgCount2 T
   one : ∀{n Δ Δ' A B} → {sub : TSub Δ' Δ} → ArgCount2 {n} (Δ' , sub , B)
     → ArgCount2 (Δ' , sub , A ⇒ B)
-  One : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ} → (X : Type n Δ) -- TODO: should this really be in Δ'
+  One : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ} → (X : Type n Δ)
     → ArgCount2 ((Δ' , n) , (append1sub sub X) , T)
     → ArgCount2 (Δ' , sub , ⋁ T)
   cumu : ∀{n Δ Δ' T} → {sub : TSub Δ' Δ}
     → ArgCount2 {n} (Δ , idSub , subType sub T)
     → ArgCount2 (Δ' , sub , cumu T)
 
--- really, the following three functions are collectively outputting a Typo
-outputΔ : ∀{n Δ Δ' T} → (sub : TSub Δ' Δ) → ArgCount {n} T sub → TCtx
-outputΔ {_} {Δ} {Δ'} sub none = Δ'
-outputΔ sub (one count) = outputΔ sub count
-outputΔ sub (One {n} X count) = (outputΔ (append1sub sub X) count) , n
-outputΔ {n} {Δ} {Δ'} sub (cumu count) = Δ'
+outputN : ∀{n Δ} → (T : Typo n Δ) → ArgCount2 T → ℕ
+outputN {n} T none = n
+outputN (Δ' , sub , A ⇒ B) (one count) = outputN _ count
+outputN (Δ' , sub , (⋁ T)) (One X count) = outputN _ count
+outputN (Δ' , sub , (cumu T)) (cumu count) = outputN _ count
 
-output : ∀{n Δ} → (T : Typo n Δ) → ArgCount2 T → Typo n Δ
+output : ∀{n Δ} → (T : Typo n Δ) → (count : ArgCount2 T)
+  → Typo (outputN T count) Δ
 output T none = T
 output (Δ' , sub , A ⇒ B) (one count) = output (Δ' , sub , B) count
 output {suc n} (Δ' , sub , ⋁ T) (One X count)
   = output ((Δ' , n) , append1sub sub X , T) count -- TODO: is this line right?
 output {_} {Δ} (Δ' , sub , cumu T) (cumu count)
-  = cumuTypo (output (Δ , idSub , subType sub T) count)
+  = output (Δ , idSub , subType sub T) count
+  -- TODO TODO TODO TODO TODO: the above makes no sense. Definitely need
+  -- to have outputN, which determines the outputN, rather than using cumu constructor
+  -- in output.
 
   --            ↓       ↓                  ↓   make Typo
 outputΓ : ∀{n Δ Δ'} → {sub : TSub Δ' Δ} → (T : Type n Δ')
@@ -199,10 +188,9 @@ outputΓ (⋁ T) (One X count) Γ = outputΓ T count (renΓ weaken1Δ Γ)
 outputΓ {_} {_} {_} {sub} (cumu T) (cumu count) Γ
   = outputΓ (subType sub T) count (subΓ sub Γ)
 
+-- TODO: need all Contexts to be in Δ instead of Δ'
 mutual
-  -- BUT WHATS IN THAT ? THERE
-  -- data Nf : ∀{n Δ} → Ctx ? → Typo n Δ → Set where
-  --           THIS↓        THIS↓                   and THIS↓     make a Typo
+  --           THIS↓  THIS↓                    and THIS↓     make a Typo
   data Nf : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ' → Type n Δ' → Set where
     lambda : ∀{n Δ Δ' Γ A B} → {sub : TSub Δ' Δ}
       → Nf {n} sub (Γ , A) B → Nf sub Γ (A ⇒ B)
@@ -249,23 +237,28 @@ varSub (next icx) (next x) with varSub icx x
 ... | inj₁ p = inj₁ p
 ... | inj₂ x' = inj₂ (next x')
 
-{-
-TODO:
+subTrans : ∀{Δ₁ Δ₂ Δ₃} → TSub Δ₁ Δ₂ → TSub Δ₂ Δ₃ → TSub Δ₁ Δ₃
+subTrans sub₁ sub₂ x = subType sub₂ (sub₁ x)
 
-FIGURE OUT: is there any reason for anything other than appv and subv to be
-prametrized by Typo? Can't everything else be parametrized by Type,
-and subv and appv merely apply the subs to the types to get those types?
--}
+--                ↓    ↓      ↓  make the Typo
+subNf : ∀{n Δ₁ Δ₂ Δ' Γ T} → {subT : TSub Δ' Δ₁} → (sub : TSub Δ₁ Δ₂)
+  → Nf {n} {Δ₁} {Δ'} subT Γ T
+  → Nf {n} {Δ₂} {Δ'} (subTrans subT sub) Γ T
+subNf sub (lambda e) = lambda (subNf sub e)
+subNf sub (Tlambda e) = Tlambda {! subNf ? e  !}
+subNf sub (cumu e) = cumu {! subNf sub e  !}
+subNf sub (ne x) = {!   !}
 
   -- data Nf : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ' → Type n Δ' → Set where
 mutual
-  subv : ∀{n m Δ Δ' Γ T T'} → {sub : TSub Δ' Δ} → (icx : InCtx {n} {Δ'} Γ T)
-    → (toSub : Nf sub (subCtx icx) T)
-    → Nf {m} sub Γ T' → Nf sub (subCtx icx) T'
-  subv icx toSub (lambda e) = lambda (subv (next icx) {! renNf weaken1 toSub  !} e)
-  subv icx toSub (Tlambda e) = Tlambda (subv {!  renICX icx !} {! renNf weaken toSub  !} e)
-  subv icx toSub (cumu e) = cumu (subv {! subICX icx  !} {!   !} e)
-  subv icx toSub (ne (varapp sub T count icx₁ x)) = {!   !}
+  -- subv : ∀{n m Δ Δ' Δ'e Γ T T'} → {sub : TSub Δ' Δ} → {sube : TSub Δ'e Δ}
+  --   → (icx : InCtx {n} {Δ'} Γ T)
+  --   → (toSub : Nf sub (subCtx icx) T)
+  -- --   -- TODO: only toSub is part of induction here. e arg should have
+  -- --   -- its own sub. Basically e is just parametrized by ANY sub.
+  --   → Nf {m} sube Γ T' → Nf sube (subCtx icx) T'
+  -- subv x toSub e = {!   !}
+
   appv : ∀{n Δ Δ' Γ T} → {sub : TSub Δ' Δ} → (e : Nf {n} sub Γ T)
     → (count : ArgCount2 (Δ' , sub , T))
     → inputs sub T count Γ
@@ -273,14 +266,16 @@ mutual
       in  Nf subout (outputΓ _ count Γ) Tout
   appv (lambda e) none tt = lambda e
   appv (lambda e) (one count) (a , inputs)
-    = appv (subv same a e) count inputs
+    -- = appv (subv same a e) count inputs
+    = appv {! subv same a ?  !} count inputs
   appv (Tlambda e) none tt = Tlambda e
-  appv (Tlambda e) (One X count) inputs
-    = appv {! e  !} count inputs
+  appv {_} {_} {_} {_} {_} {sub} (Tlambda e) (One X count) inputs
+    -- = let a = subNf (append1sub sub X) {! e  !} in {!   !}
+    = let a = subNf (append1sub {!   !} X) e in {!   !}
+    -- = appv {! subNf (append1sub sub X) e  !} count inputs
   appv (cumu e) none tt = cumu e
   appv (cumu e) (cumu count) inputs
-    -- = appv {!   !} {!  count !} {!   !}
-    = {! appv e count inputs  !}
+    = appv {_} {_} {_} {_} {_} {idSub} e count inputs -- idSub arg unecessary, just to show how it works!
   appv (ne (varapp sub T count₁ icx inputs₁)) count inputs₂
     = {!   !}
 
@@ -326,4 +321,28 @@ weakenNf' : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
   → (W : Type n Δ')
   → Nf Δ Γ T → Nf {m} Δ' {! weakenΓ pre ?  !}{-weakenΓ pre W-} (subType sub T)
 weakenNf' = {!   !}
+-}
+
+{-
+TODO list to fix things.
+Maybe when I fix all of these things, the file will work.
+Hopefully, I'll at least understand why it doesn't work.
+
+1) Understand whats wrong in TLambda case of App.
+  1 a) consider adding the X argument into TLambda case of Nf
+      so that it uses append1sub isntead of liftTSub
+  1 b) TODO Maybe need subNf, which subs types in an Nf.
+    It would change Δ but keep Δ' the same. Because the Δ' is really just
+    part of the Typo.
+2) Make all Ctx in Δ instead of Δ'. Otherwise, can't define sub in way that
+  makes sense, because need Γ for both e and toSub?
+3) Think more carefully about proof on paper. See how this applies to things
+  that I have here in this file.
+
+Overall, the goal is to determine if this method really works or not by next
+Wednesday.
+
+TODO: is there any particular reason why ArgCount must be parametrized by
+Typo instead of just Type?
+
 -}

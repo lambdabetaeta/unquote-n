@@ -147,6 +147,8 @@ data ArgCount : ∀{n Δ Δ'} → Type n Δ → TSub Δ Δ' → Set where
 
 mutual
   -- partially unquoted Exp
+  -- TODO: shouldn't the TSub here be going the other way
+  read the above comment
   PUExp : ∀{n Δ Δ'} → {T : Type n Δ} → (sub : TSub Δ Δ')
     → ArgCount T sub → Ctx Δ → Set
                                                -- TODO: should this really be in Δ' as opposed to Δ?
