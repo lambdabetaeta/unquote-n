@@ -2,8 +2,10 @@ open import Data.Unit using (⊤ ; tt)
 open import Data.Product
 open import Data.Maybe
 open import Relation.Binary.PropositionalEquality
-open import Data.Nat
 open import Data.Fin using (suc ; Fin)
+open import Data.Nat using (ℕ; _≟_; suc; zero)
+open import Data.Bool using (Bool; true; false)
+open import Relation.Nullary
 open import Data.Sum
 
 -- TCtx l represents context of a type at level l,
@@ -227,8 +229,48 @@ subExtType : ∀{Δ n m} → (ext : TCtxExt Δ n) → ExtSub {Δ} {n} ext →
 subExtType {_} {n} {m} ext sub (Var x) = {!  Var x !}
 subExtType {_} {n} {m} ext sub (A ⇒ B)
   = (subExtType ext sub A) ⇒ (subExtType ext sub B)
-subExtType {_} {n} {.(suc _)} ext sub (⋁ T) = ⋁ (subExtType {!   !} {!   !} T)
+subExtType {_} {n} {.(suc _)} ext sub (⋁ T) = ⋁ (subExtType {! Data.Nat._≟_  !} {!   !} T)
 subExtType {_} {n} {.(suc _)} ext sub (cumu T) = {!   !}
+
+-- https://readthedocs.org/projects/agda/downloads/pdf/latest/ page 166
+case_of_ : ∀ {a b} → {A : Set a} → {B : Set b} → A → (A → B) → B
+case x of f = f x
+
+test : Dec ℕ
+test = Relation.Nullary.yes 5
+
+TSubn : ℕ → TCtx → TCtx → Set
+TSubn n Δ₁ Δ₂ = ∀{m}
+  -- → case n ≟ m of
+  --   λ { (yes x) → InTCtx Δ₁ m → Type m Δ₂ -- or n, not sure which is better
+  --     ; (no  y) → InTCtx Δ₁ m → InTCtx Δ₂ m
+  --   }
+  → (n ≡ m → InTCtx Δ₁ m → Type m Δ₂) × (¬ n ≡ m → InTCtx Δ₁ m → InTCtx Δ₂ m)
+
+-- liftTSub : ∀{Δ₁ Δ₂ n} → TSub Δ₁ Δ₂ → TSub (Δ₁ , n) (Δ₂ , n)
+-- liftTSub sub same = Var same
+-- liftTSub sub (next itc) = renType weaken1Δ (sub itc)
+liftTSubn1 : ∀{n l Δ₁ Δ₂} → TSubn n Δ₁ Δ₂
+  → ∀{m} → n ≡ m → InTCtx (Δ₁ , l) m → Type m (Δ₂ , l)
+liftTSubn1 sub p same = Var same
+liftTSubn1 sub p (next x) = renType weaken1Δ ((proj₁ sub) p x)
+liftTSubn2 : ∀{n l Δ₁ Δ₂} → TSubn n Δ₁ Δ₂
+  → ∀{m} → ¬ n ≡ m → InTCtx (Δ₁ , l) m → InTCtx (Δ₂ , l) m
+liftTSubn2 sub p same = same
+liftTSubn2 sub p (next x) = next ((proj₂ sub) p x)
+liftTSubn : ∀{n l Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → TSubn n (Δ₁ , l) (Δ₂ , l)
+liftTSubn {n} {l} sub
+  = liftTSubn1 sub , liftTSubn2 sub
+
+subTypen : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type m Δ₁ → Type m Δ₂
+subTypen {n} {m} sub (Var x) = case n ≟ m of
+  λ { (yes p) → (proj₁ sub) p x
+    ; (no p) → Var ((proj₂ sub) p x)
+  }
+subTypen sub (A ⇒ B) = subTypen sub A ⇒ subTypen sub B
+subTypen sub (⋁ T) = ⋁ (subTypen (liftTSubn sub) T)
+subTypen sub (cumu T) = cumu (subTypen sub T)
+
 
 -- mutual
   -- appv : ∀{n Δ Γ T} → (ext : TCtxExt Δ) → (sub : ExtSub {Δ} ext)
@@ -298,13 +340,19 @@ TODO
   -- T = X.  So sub(X) = X
     the can't be any well typed args. Keep in mind that X is at level n,
     and so sub(X) = X.
-  -- T = cumu A. So, sub(cumu A) = sub(A)
+  -- T = cumu A. So, sub(cumu A) = cumu (sub(A))
     then e = cumu e'. Simply recurse with [n-1, sub(A), idSub, e']
+    so need idSub(sub(A)) = sub(A) DEFINITIONALLY (or at least propositionally...)
 -------------------------------------------------------------------------------
 
 So, the takeaway is that it is crucial that sub be defined in a way so that
 e.g. sub(A ⇒ B) = sub(A) ⇒ sub(B) is DEFINITIONALLY true.
 
 We also need sub(X) = X, for X at level n+1 and sub at level n. DEFINITIONALLY
+TODO: what does this even mean? the input and output will be in different Δ
+It just means that the output must be a variable.
+
+NOTE: I believe that these things are true of good ol' fashioned TSub?
+Are they?
 
 -}
