@@ -233,83 +233,57 @@ subTrans sub₁ sub₂ x = subType sub₂ (sub₁ x)
 subNf : ∀{n Δ₁ Δ₂ Δ' Γ T} → {subT : TSub Δ' Δ₁} → (sub : TSub Δ₁ Δ₂)
   → Nf {n} {Δ₁} {Δ'} subT Γ T
   → Nf {n} {Δ₂} {Δ'} (subTrans subT sub) (subΓ sub Γ) T
-subNf sub (lambda e) = {!   !} -- lambda (subNf sub {! e  !} ) -- lambda (subNf sub e)
+subNf sub (lambda e) = lambda {! subNf sub e  !} -- lambda (subNf sub {! e  !} ) -- lambda (subNf sub e)
 subNf sub (Tlambda e) = Tlambda {! subNf ? e  !}
 subNf sub (cumu e) = cumu {! subNf sub e  !}
 subNf sub (ne x) = {!   !}
 
+-- Δ₃ → Δ₄
+-- ↑    ↑     commutative
+-- Δ₁ → Δ₂
+
+subQuad : ∀{n Δ₁ Δ₂ Δ₃ Δ₄ Γ T} → {sub₁₂ : TSub Δ₁ Δ₂} → {sub₃₄ : TSub Δ₃ Δ₄}
+  → (ren₁₃ : TRen Δ₁ Δ₃) → (ren₂₄ : TRen Δ₂ Δ₄)
+  → Nf {n} {Δ₂} {Δ₁} sub₁₂ Γ T
+  → Nf {n} {Δ₄} {Δ₃} sub₃₄ (renΓ ren₂₄ Γ) (renType ren₁₃ T)
+subQuad ren₁₃ ren₂₄ (lambda e) = lambda {! subQuad ren₁₃ ren₂₄ e   !}
+subQuad ren₁₃ ren₂₄ (Tlambda e) = {!   !}
+subQuad ren₁₃ ren₂₄ (cumu e) = {!   !}
+subQuad ren₁₃ ren₂₄ (ne x) = {!   !}
+
   -- data Nf : ∀{n Δ Δ'} → (sub : TSub Δ' Δ) → Ctx Δ' → Type n Δ' → Set where
 mutual
-  -- subv : ∀{n m Δ Δ' Δ'e Γ T T'} → {sub : TSub Δ' Δ} → {sube : TSub Δ'e Δ}
-  --   → (icx : InCtx {n} {Δ'} Γ T)
-  --   → (toSub : Nf sub (subCtx icx) T)
+  subv : ∀{n m Δ Δ' Δ'e Γ T Te} → (sub : TSub Δ' Δ) → (sube : TSub Δ'e Δ)
+    → (icx : InCtx {n} {Δ} Γ (subType sub T))
+    → (toSub : Nf sub (subCtx icx) T) -- TODO: figure out how InCtx works in Maximal sub design.
   -- --   -- TODO: only toSub is part of induction here. e arg should have
   -- --   -- its own sub. Basically e is just parametrized by ANY sub.
-  --   → Nf {m} sube Γ T' → Nf sube (subCtx icx) T'
-  -- subv x toSub e = {!   !}
+    → Nf {m} sube Γ Te → Nf sube (subCtx icx) Te
+  subv sub sube x toSub (lambda e)
+    = lambda (subv sub sube (next x) {! renNf weaken1Δ toSub  !} e)
+  subv sub sube x toSub (Tlambda e)
+    = Tlambda (subv (liftTSub sub) (liftTSub sube) {! x  !} {! toSub  !} e)
+  subv sub sube x toSub (cumu e) = cumu (subv sub idSub x toSub e)
+  subv sub sube x toSub (ne x₁) = {!   !}
 
-  appv : ∀{n Δ Δ' Γ T} → {sub : TSub Δ' Δ} → (e : Nf {n} sub Γ T)
+  appv : ∀{n Δ Δ' Γ T} → (sub : TSub Δ' Δ) → (e : Nf {n} sub Γ T)
     → (count : ArgCount2 (Δ' , sub , T))
     → inputs sub T count Γ
     → let (Δ'out , subout , Tout) = output _ count
       in  Nf subout Γ Tout
-  appv (lambda e) none tt = lambda e
-  appv (lambda e) (one count) (a , inputs)
+  appv sub (lambda e) none tt = lambda e
+  appv sub (lambda e) (one count) (a , inputs)
     -- = appv (subv same a e) count inputs
-    = appv {! subv same a ?  !} count inputs
-  appv (Tlambda e) none tt = Tlambda e
-  appv {_} {_} {_} {_} {_} {sub} (Tlambda e) (One X count) inputs
-    -- = let a = subNf (append1sub sub X) {! e  !} in {!   !}
-    = let a = subNf (append1sub {! sub  !} X) e in {!   !}
-    -- = appv {! subNf (append1sub sub X) e  !} count inputs
-  appv (cumu e) none tt = cumu e
-  appv (cumu e) (cumu count) inputs
-    = appv {_} {_} {_} {_} {_} {idSub} e count inputs -- idSub arg unecessary, just to show how it works!
-  appv (ne (varapp sub T count₁ icx inputs₁)) count inputs₂
-    = {!   !}
+    = appv sub (subv sub sub same a e) count inputs
+  appv sub (Tlambda e) none tt = Tlambda e
+  appv {suc n} {Δ} {Δ'} sub (Tlambda e) (One X count) inputs
+    = let eSubbed = subNf {!   !} e
+      in appv {suc n} {Δ} {Δ' , n} (append1sub sub X) {! eSubbed  !} count inputs
+  appv sub (cumu e) none tt = cumu e
+  appv sub (cumu e) (cumu count) inputs
+    = appv idSub e count inputs -- idSub arg unecessary, just to show how it works!
+  appv sub (ne u) count inputs₂ = {!   !}
 
-{-
-
--- NOTE: I see no reason that there should be done with Pre instead of Ren
-
-weakenΓ : ∀{Δ n Γ} → Pre {Δ} Γ → Type n Δ → Ctx Δ
-weakenΓ (same {_} {Γ}) A = Γ , A
-weakenΓ (next {_} {Γ} {_} {T} pre) A = (weakenΓ pre A) , T
-
-weakenICX : ∀{Δ n m Γ T} → (pre : Pre {Δ} Γ) → (W : Type n Δ)
-  → (icx : InCtx {m} Γ T) → InCtx (weakenΓ pre W) T
-weakenICX same W x = next x
-weakenICX (next pre) W same = same
-weakenICX (next pre) W (next x) = next (weakenICX pre W x)
-
-weakenNf : ∀{n m Δ Γ T} → (pre : Pre Γ) → (W : Type n Δ)
-  → Nf Δ Γ T → Nf {m} Δ (weakenΓ pre W) T
-
-weakenInputs : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
-  → (W : Type n Δ')
-  → (count : ArgCount {m} T sub)
-  → inputs sub count Γ
-  → inputs sub count (weakenΓ pre W)
-weakenInputs pre W none inputs = tt
-weakenInputs pre W (one count) (e , inputs)
-  = weakenNf pre W e , weakenInputs pre W count inputs
-weakenInputs pre W (One X count) inputs = weakenInputs pre W count inputs
-weakenInputs pre W (cumu count) inputs = weakenInputs pre W count inputs
-
-weakenNe : ∀{n m Δ Γ T} → (pre : Pre Γ) → (W : Type n Δ)
-  → Ne Δ Γ T → Ne {m} Δ (weakenΓ pre W) T
-weakenNe pre W (TApp e X) = TApp (weakenNe pre W e) X
-weakenNe pre W (varapp count x inputs)
-  = varapp count (weakenICX pre W x) (weakenInputs pre W count inputs)
-weakenNf pre W (ne e) = ne (weakenNe pre W e)
-weakenNf pre W (lambda v) = lambda (weakenNf (next pre) W v)
-weakenNf pre W (Tlambda e) = Tlambda {! weakenNf ? ? e !}
-
-weakenNf' : ∀{n m Δ Δ' Γ T} → {sub : TSub Δ Δ'} → (pre : Pre Γ)
-  → (W : Type n Δ')
-  → Nf Δ Γ T → Nf {m} Δ' {! weakenΓ pre ?  !}{-weakenΓ pre W-} (subType sub T)
-weakenNf' = {!   !}
--}
 
 {-
 TODO list to fix things.
@@ -327,10 +301,47 @@ Hopefully, I'll at least understand why it doesn't work.
 3) Think more carefully about proof on paper. See how this applies to things
   that I have here in this file.
 
-Overall, the goal is to determine if this method really works or not by next
-Wednesday.
 
-TODO: is there any particular reason why ArgCount must be parametrized by
-Typo instead of just Type?
+-}
+
+{-
+New TODO:
+
+1) apply paper proof understanding to this file.
+
+In particular, in the proof, e : sub(T). But, really should be e : T.
+So
+
+TRUE TODO: rewrite paper proof to this style!!!!!!!!!!!!!!!!
+
+-------------------------------------------------------------------------------
+  "PAPER" PROOF:
+
+  If n = 0, then proof from S.T.L.C suffices, as no ∀ types.
+  For all level n ≥ 1, for all typos (T , sub) where sub has vars at
+  level (n-1) and for all e : (T , sub), I will define
+  (app e e₁ e₂ ... eₙ) for well types args, as well as
+  e'[x ↦ e] for any well typed e'.
+
+  The latter is easy, as it only depends on the former.
+
+  For the former, cases on T:
+  -- T = A ⇒ B.
+    then e = λ x . e', with e' : (B , sub)
+    e₁ : (A , sub). Recurse with (n, A, sub, e₁) to get e'[x ↦ e₁] : B.
+    Next, recurse with (n, B, sub, e'[x ↦ e₁]) to apply rest of args.
+  -- T = ∀ X . A.
+    then e = Λ X . e', with e' : (A , sub)
+    e₁ = B is a type.
+    recurse on (n, A, sub ⊎ [X ↦ B] , e') to apply rest of args.
+    NOTE: that A is at level (n-1), and so can only come up after a cumu.
+    Therefore, X will be subbed for A by the time it comes up.
+  -- T = X.  So sub(X) = X
+    the can't be any well typed args. Keep in mind that X is at level n,
+    and so sub(X) = X.
+  -- T = cumu A. So, sub(cumu A) = cumu (sub(A))
+    then e = cumu e'. Simply recurse with [n-1, sub(A), idSub, e']
+    so need idSub(sub(A)) = sub(A) DEFINITIONALLY (or at least propositionally...)
+-------------------------------------------------------------------------------
 
 -}

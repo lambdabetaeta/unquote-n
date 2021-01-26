@@ -7,6 +7,8 @@ open import Data.Nat using (ℕ; _≟_; suc; zero)
 open import Data.Bool using (Bool; true; false)
 open import Relation.Nullary
 open import Data.Sum
+-- open import Relation.Negation
+open import Data.Empty
 
 -- TCtx l represents context of a type at level l,
 -- which will only include type of up to level (l - 1)
@@ -205,33 +207,6 @@ varSub (next icx) (next x) with varSub icx x
 ... | inj₁ p = inj₁ p
 ... | inj₂ x' = inj₂ (next x')
 
--- extention
-TCtxExt : TCtx → ℕ → Set
-TCtxExt Δ n = ℕ -- n is type level, the output ℕ is the number of things in the extention
-
-extend : ∀{Δ n} → TCtxExt Δ n → TCtx
-extend {Δ₁} {n} 0 = Δ₁
-extend {Δ₁} {n} (suc ext) = (extend {Δ₁} {n} ext) , n
-
-ExtSub : ∀{Δ n} → TCtxExt Δ n → Set
-ExtSub 0 = ⊤
-ExtSub {Δ} {n} (suc ext) = ExtSub {Δ} {n} ext × Type n Δ
-
--- left case means n ≡ m, and getting result from ext
-varExtSub : ∀{Δ n m A B} → (ext : TCtxExt Δ n) → (sub : ExtSub {Δ} {n} ext)
-  → (icx : InTCtx (extend {Δ} {n} ext) m)
-  → (Type m Δ) ⊎ (InTCtx Δ m)
-varExtSub zero sub icx = inj₂ icx
-varExtSub (suc ext) sub icx = {!   !}
-
-subExtType : ∀{Δ n m} → (ext : TCtxExt Δ n) → ExtSub {Δ} {n} ext →
-  Type m (extend {Δ} {n} ext) → Type m Δ
-subExtType {_} {n} {m} ext sub (Var x) = {!  Var x !}
-subExtType {_} {n} {m} ext sub (A ⇒ B)
-  = (subExtType ext sub A) ⇒ (subExtType ext sub B)
-subExtType {_} {n} {.(suc _)} ext sub (⋁ T) = ⋁ (subExtType {! Data.Nat._≟_  !} {!   !} T)
-subExtType {_} {n} {.(suc _)} ext sub (cumu T) = {!   !}
-
 -- https://readthedocs.org/projects/agda/downloads/pdf/latest/ page 166
 case_of_ : ∀ {a b} → {A : Set a} → {B : Set b} → A → (A → B) → B
 case x of f = f x
@@ -247,9 +222,6 @@ TSubn n Δ₁ Δ₂ = ∀{m}
   --   }
   → (n ≡ m → InTCtx Δ₁ m → Type m Δ₂) × (¬ n ≡ m → InTCtx Δ₁ m → InTCtx Δ₂ m)
 
--- liftTSub : ∀{Δ₁ Δ₂ n} → TSub Δ₁ Δ₂ → TSub (Δ₁ , n) (Δ₂ , n)
--- liftTSub sub same = Var same
--- liftTSub sub (next itc) = renType weaken1Δ (sub itc)
 liftTSubn1 : ∀{n l Δ₁ Δ₂} → TSubn n Δ₁ Δ₂
   → ∀{m} → n ≡ m → InTCtx (Δ₁ , l) m → Type m (Δ₂ , l)
 liftTSubn1 sub p same = Var same
@@ -270,6 +242,27 @@ subTypen {n} {m} sub (Var x) = case n ≟ m of
 subTypen sub (A ⇒ B) = subTypen sub A ⇒ subTypen sub B
 subTypen sub (⋁ T) = ⋁ (subTypen (liftTSubn sub) T)
 subTypen sub (cumu T) = cumu (subTypen sub T)
+
+idSubn : ∀{n Δ} → TSubn n Δ Δ
+idSubn = (λ p x → Var x) , λ p x → x
+
+idSubnFact : ∀{n m Δ T} → T ≡ subTypen {n} {m} {Δ} {Δ} idSubn T
+idSubnFact = {!   !}
+-- idSubnFact {_} {_} {_} {Var x} = {!   !}
+-- idSubnFact {_} {_} {_} {A ⇒ B} = cong₂ _⇒_ idSubnFact idSubnFact
+-- idSubnFact {_} {_} {_} {⋁ T} = cong ⋁ {!   !}
+-- idSubnFact {_} {_} {_} {cumu T} = {!   !}
+
+append1subn : ∀{n Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type n Δ₂ → TSubn n (Δ₁ , n) Δ₂
+append1subn {n} sub T {m} = case n ≟ m of
+  λ { (yes p) → (λ _ → λ { same → T -- why oh why aren't there normal case expressions in Agda
+                          ; (next x) → proj₁ sub p x
+                        })
+      , λ np → ⊥-elim (np p)
+    ; (no np) → (λ p → ⊥-elim (np p)) , λ _ → λ { same → ⊥-elim (np refl)
+                                                ; (next x) → proj₂ sub np x
+                                                  }
+  }
 
 
 -- mutual
@@ -302,6 +295,45 @@ subTypen sub (cumu T) = cumu (subTypen sub T)
 --   appv1 (cumu T) sub (cumu e) none inputs = {!   !} -- subNf sub (cumu e)
 --   appv1 (cumu T) sub (cumu e) (cumu count) inputs
 --     = appv1 T sub e count inputs -- TODO this is wrong, should be applying sub.
+
+mutual
+  -- subNf : ∀{} →
+  appNf0 : ∀{Δ  Γ} → (T : Type 0 Δ)
+    → Nf {0} Δ Γ T
+    → (count : ArgCount T)
+    → inputs count Γ
+    → Nf Δ Γ (output count)
+  appNf0 (A ⇒ B) (lambda e) (one count) (a , inputs)
+    = appNf0 B {! subNf e same a  !} count inputs
+  appNf0 T (ne x) (one count) (a , inputs) = {!   !}
+  appNf0 T e none tt = e
+  appNfS : ∀{n Δ Δ' Γ Tsubbed} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
+    -- → Tsubbed ≡ subTypen sub T
+    → Nf {suc n} Δ Γ (subTypen sub T) -- Tsubbed
+    → (count : ArgCount (subTypen sub T)) -- Tsubbed)
+    → inputs count Γ
+    → Nf Δ Γ (output count)
+    -- crucial idea: we are doing induction on T, not e.
+    -- we then do secondary recursion (not induction) on e, which should by all rights be harder but Agda is being nice here.
+    -- then, the varapp and count=none case at the bottom is really a separate case for each type case.
+    -- but thankfully Agda lets us combine them all into one case.
+  appNfS (Var X) sub e count inputs = {!   !} -- really just have to prove sub X = X, so count = 0.
+  appNfS (A ⇒ B) sub (lambda e) (one count) (a , inputs)
+    = appNfS B sub {! subNf e same a  !} count inputs
+  appNfS (⋁ T) sub (Tlambda e) (One X count) inputs
+    = appNfS T (append1subn sub X) {! subNf sub e  !} {! subCount sub ecount  !} inputs
+  appNfS (cumu T) sub (cumu e) count inputs = {! cumu  !}
+  appNfS T sub (ne u{-varapp case-}) count inputs = {!   !}
+  appNfS T sub e none tt = e
+
+  appNf : ∀{n Δ Γ} → (T : Type n Δ)
+    → Nf {n} Δ Γ T
+    → (count : ArgCount T)
+    → inputs count Γ
+    → Nf Δ Γ (output count)
+  appNf {zero} = appNf0
+  appNf {suc n} T e count inputs
+    = appNfS T idSubn (subst (λ T → Nf _ _ T) idSubnFact e) (subst ArgCount idSubnFact count) inputs
 
 
 {-

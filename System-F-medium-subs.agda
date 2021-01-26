@@ -147,44 +147,50 @@ data ArgCount : ∀{n Δ Δ'} → Type n Δ → TSub Δ Δ' → Set where
 
 mutual
   -- partially unquoted Exp
-  -- TODO: shouldn't the TSub here be going the other way
-  read the above comment
-  PUExp : ∀{n Δ Δ'} → {T : Type n Δ} → (sub : TSub Δ Δ')
+  --            ↓      ↓                  ↓
+  PUExp : ∀{n Δ Δ'} → {T : Type n Δ'} → (sub : TSub Δ' Δ)
     → ArgCount T sub → Ctx Δ → Set
                                                -- TODO: should this really be in Δ' as opposed to Δ?
-  PUExp {n} {Δ} {Δ'} sub (none {_} {_} {_} {T}) Γ = Exp Δ' (subΓ sub Γ) (subType sub T) -- TODO: should be Nf
+  PUExp {n} {Δ} {Δ'} sub (none {_} {_} {_} {T}) Γ = Exp Δ Γ (subType sub T) -- TODO: should be Nf
   PUExp {n} sub (one {_} {_} {_} {A} count) Γ
-    = (GExp {n} Γ sub A) → PUExp {n} sub count Γ
+    = (GExpImpl {n} Γ sub A) → PUExp {n} sub count Γ
   PUExp {n} sub (One X count) Γ
-    = PUExp {n} (append1sub sub X) count (renΓ weaken1Δ Γ)
-  PUExp {suc n} {Δ} {Δ'} sub (cumu count) Γ = PUExp idSub count (subΓ sub Γ) -- NOTE: this step is what allows GExp to not be recursive: we only apply subs when decreasing level.
+    = PUExp {n} (append1sub sub X) count Γ
+  PUExp {suc n} {Δ} {Δ'} sub (cumu count) Γ = PUExp idSub count Γ -- NOTE: this step is what allows GExp to not be recursive: we only apply subs when decreasing level.
   -- TODO: think about if the above design of only applying subs at cumu case could be used to do inductive normalization of System-F, similar to how I do inductive normalization of STLC.
 
   -- Exp that can be partially unquoted to any amount
-  APUExp : ∀{n Δ Δ'} → Ctx Δ → TSub Δ Δ' → Type n Δ → Set
+  APUExp : ∀{n Δ Δ'} → Ctx Δ → TSub Δ' Δ → Type n Δ' → Set
   APUExp {n} Γ sub T = (count : ArgCount T sub) → PUExp {n} sub count Γ
 
   -- Exp that can be in a weaker context AND partially unquoted
-  GExp : ∀{n Δ Δ'} → Ctx Δ → TSub Δ Δ' → Type n Δ → Set
-  GExp {n} Γ sub T = ∀{Γ'} → Ren Γ Γ' → APUExp {n} Γ' sub T
+  GExpImpl : ∀{n Δ Δ'} → Ctx Δ → TSub Δ' Δ → Type n Δ' → Set
+  GExpImpl {n} Γ sub T = ∀{Γ'} → Ren Γ Γ' → APUExp {n} Γ' sub T
 
--- TODO: maybe GExp shouldn't be parametrized by TSub, and instead should parametrize
--- in the output the same way it does with Ren and count?
--- But then, in one case of PUExp, would need to apply subs on left.
--- In general, to figure out these things, need to write unquote-n
--- and see how things will fit in.
+  GExp : ∀{n Δ} → Ctx Δ → Type n Δ → Set
+  GExp Γ T = GExpImpl Γ idSub T
 
 Sub : ∀{Δ} → Ctx Δ → Ctx Δ → Set
-Sub {Δ} Γ₁ Γ₂ = ∀{n Δ' T} → {tSub : TSub Δ Δ'}
-  → InCtx {n} Γ₁ T → GExp Γ₂ tSub T
+Sub {Δ} Γ₁ Γ₂ = ∀{n T} → InCtx {n} Γ₁ T → GExp Γ₂ T
 
 nApp : ∀{n Δ Δ' Γ T} → (sub : TSub Δ Δ')
   → (count : ArgCount {n} T sub) → Exp Δ Γ T → PUExp sub count Γ
-nApp sub none e = {! TsubExp sub e  !}
-nApp sub (one count) e = {!   !} -- λ x → nApp count (app e (x idRen none))
--- nApp (One X count) e = nApp count (TApp {! e  !} {! X  !} ) -- TODO: subExp?
-nApp sub (One X count) e = {!   !} -- nApp count {! TApp e X  !} -- TODO: subExp?
-nApp sub (cumu count) e = {! e  !} -- TODO: need cumu in Exp, maybe need Nf and Ne.
+-- nApp sub none e = {! TsubExp sub e  !}
+-- nApp sub (one count) e = {!   !} -- λ x → nApp count (app e (x idRen none))
+-- -- nApp (One X count) e = nApp count (TApp {! e  !} {! X  !} ) -- TODO: subExp?
+-- nApp sub (One X count) e = {!   !} -- nApp count {! TApp e X  !} -- TODO: subExp?
+-- nApp sub (cumu count) e = {! e  !} -- TODO: need cumu in Exp, maybe need Nf and Ne.
 
 -- idSub : ∀{Δ Γ} → Sub {Δ} Γ Γ
 -- idSub x ren count = nApp count (var (ren x))
+
+{-
+TODO: THE PLAN!
+
+I'm going to see if its possible for subs to only appear in ArgCount and
+GExpImpl, but not later.
+
+What if Argcount also wasn't parametrized by sub?
+
+
+-}
