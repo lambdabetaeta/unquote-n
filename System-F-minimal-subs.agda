@@ -175,6 +175,7 @@ does this reduce the expressiveness of the language at all?
 -}
 
 -- TSubn :
+look at this also
 TSubn : ℕ → TCtx → TCtx → Set
 TSubn (suc n) Δ₁ Δ₂ = InTCtx Δ₁ n → Type n Δ₂
 TSubn zero Δ₁ Δ₂ = ⊤
@@ -188,6 +189,7 @@ data ArgCount : ∀{n Δ} → Type n Δ → Set where
   one : ∀{n Δ A B} → ArgCount B → ArgCount {n} {Δ} (A ⇒ B)
   One : ∀{n Δ T} → (X : Type n Δ)
     → ArgCount {_} {Δ , n} T → ArgCount (⋁ T)
+    fix this substitute T
   cumu : ∀{n Δ T}
     → ArgCount {n} {Δ} T → ArgCount {suc n} (cumu T)
 
@@ -260,4 +262,33 @@ Like Sub = (f : InTCtx Δ → Type Δ) with proof that (f (A ⇒ B) ≡ f A ⇒ 
 
 Or have all parametrized by Typos?  <=== try this first I think. TODO
 
+-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{-
+Type Δ
+T[X ↦ A] < ∀ X . T
+
+(Type Δ' , TSub Δ' Δ)
+(T , sub ⊎ [X ↦ A]) < (∀ X . T , sub)
+
+f : ∀ X . X → X
+∀ X . X → X     = ∀ X . cumu (X → X)
+f ℕ 5
 -}
