@@ -143,7 +143,8 @@ applySub (nextm sub) (next x) = renType weaken1Δ (applySub sub x) -- TODO: agai
 subTypen : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type m Δ₁ → Type m Δ₂
 subTypen sub (Var x) = applySub sub x
 subTypen sub (A ⇒ B) = subTypen sub A ⇒ subTypen sub B
-subTypen sub (⋁ T) = ⋁ (subTypen (liftTSubn sub) T)
+subTypen sub (⋁ T)
+  = ⋁ (subTypen (liftTSubn sub) T)
 subTypen sub (cumu T) = cumu (subTypen sub T)
 
 data Exp : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
@@ -156,39 +157,34 @@ data Exp : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
     → Exp Δ Γ (⋁ T)
     → (X : Type n Δ)
     → Exp Δ Γ (subTypen (append1subn idSubn X) T)
+  cumu : ∀{Δ n T Γ}
+    → Exp {n} Δ Γ T
+    → Exp {suc n} Δ Γ (cumu T)
 
--- IDEA: try making ArgCount parametrized by outputN and also output!!!
 
-data ArgCount : ∀{n Δ} → Type n Δ → Set where
-  none : ∀{n Δ T} → ArgCount {n} {Δ} T
-  one : ∀{n Δ A B} → ArgCount B → ArgCount {n} {Δ} (A ⇒ B)
-  One : ∀{n Δ T} → (X : Type n Δ)
-    → ArgCount {_} {Δ , n} T → ArgCount (⋁ T)
-  cumu : ∀{n Δ T}
-    → ArgCount {n} {Δ} T → ArgCount {suc n} (cumu T)
+--                        T         ↓ outputN    ↓ output type
+data ArgCount : ∀{n Δ} → Type n Δ → (nOut : ℕ) → Type nOut Δ  → Set where
+  none : ∀{n Δ T} → ArgCount {n} {Δ} T n T
+  one : ∀{n Δ A B nOut TOut} → ArgCount B nOut TOut
+    → ArgCount {n} {Δ} (A ⇒ B) nOut TOut
+    -- TODO : I THINK THAT THIS IS COMPLETELY WRONG!
+  -- One : ∀{n Δ T nOut TOut} → (X : Type n Δ)
+  --   → ArgCount {_} {Δ , n} T nOut TOut
+  --   → ArgCount (⋁ T) nOut (subTypen (append1subn idSubn X) TOut)
+  One : ∀{n Δ nOut TOut} → {T : Type (suc n) (Δ , n)} → (X : Type n Δ)
+    → ArgCount {suc n} {Δ} (subTypen (append1subn idSubn X) T) nOut TOut
+    → ArgCount {suc n} {Δ} (⋁ T) nOut TOut
 
-outputN : ∀{n Δ T} → ArgCount {n} {Δ} T → ℕ
-outputN {n} none = n
-outputN (one count) = outputN count
-outputN (One X count) = outputN count
-outputN (cumu count) = outputN count
-
-output : ∀{n Δ T} → (count : ArgCount {n} {Δ} T) → Type (outputN count) Δ
-output (none {_} {_} {T}) = T
-output (one count) = output count
--- TODO: might have to do sub with Pre here to fit with later?
-output (One X count) = subTypen (append1subn idSubn X) (output count)
-output (cumu count) = output count
+  cumu : ∀{n Δ T nOut TOut}
+    → ArgCount {n} {Δ} T nOut TOut → ArgCount {suc n} (cumu T) nOut TOut
 
 mutual
-  inputs : ∀{n Δ T} → ArgCount {n} {Δ} T → Ctx Δ → Set
+  inputs : ∀{n Δ T nOut TOut} → ArgCount {n} {Δ} T nOut TOut → Ctx Δ → Set
   inputs none Γ = ⊤
   inputs (one {_} {_} {A} count) Γ = Nf _ Γ A × inputs count Γ
-  -- TODO: again, might have issues with Pre stuff later?
-  inputs (One X count) Γ = inputs count (renΓ weaken1Δ Γ)
+  -- inputs (One X count) Γ = inputs count (renΓ weaken1Δ Γ)
+  inputs (One X count) Γ = inputs count Γ
   inputs (cumu count) Γ = inputs count Γ
-  -- inputs none Γ = ⊤
-  -- inputs (one {A} count) Γ = Nf Γ A × inputs count Γ
 
   data Nf : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
     lambda : ∀{n Δ Γ A B} → Nf {n} Δ (Γ , A) B → Nf Δ Γ (A ⇒ B)
@@ -200,10 +196,22 @@ mutual
       → Nf {suc n} Δ Γ (cumu T)
 
   data Ne : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
-    varapp : ∀{n Δ Γ T} → (count : ArgCount T)
+    varapp : ∀{n Δ Γ T nOut TOut} → (count : ArgCount T nOut TOut)
       → (icx : InCtx Γ T)
       → inputs {n} {Δ} count Γ
-      → Ne Δ Γ (output count)
+      → Ne Δ Γ TOut
+
+nfToExp : ∀{n Δ Γ T} → Nf {n} Δ Γ T → Exp {n} Δ Γ T
+nfToExp (lambda e) = lambda (nfToExp e)
+nfToExp (Tlambda e) = Tlambda (nfToExp e)
+nfToExp (ne (varapp count icx x)) = {!   !}
+nfToExp (cumu e) = cumu (nfToExp e)
+
+-- TODO: probable solution to problems is: redo ArgCount, Ne, in such a way
+-- that nfToExp is easy, also counts work out below.
+-- e.g.: Ne parametrized by ArgCount?
+-- or even Args type IS ne?
+-- so, ne constructor parametrized by Args,
 
 idSubnApplyFact : ∀{n m Δ x} → Var x ≡ applySub {n} {m} (idSubn {n} {Δ}) x
 idSubnApplyFact {_} {_} {_} {same} = refl
@@ -216,57 +224,67 @@ idSubnFact {_} {_} {_} {⋁ T} = cong ⋁ idSubnFact -- NOTE: the implementation
 idSubnFact {_} {_} {_} {cumu T} = cong cumu idSubnFact
 
 mutual
-  -- subNf : ∀{} →
-  appNf0 : ∀{Δ  Γ} → (T : Type 0 Δ)
+  -- subv : ∀{Γ T} → ∀{T'} → (icx : InCtx Γ T)
+    -- → (toSub : Nf (subCtx icx) T) → Nf Γ T' → Nf (subCtx icx) T'
+  subNf : ∀{n n' Δ Γ T T'} → (x : InCtx Γ T)
+    → (toSub : Nf {n} Δ (subCtx x) T)
+    → Nf {n'} Δ Γ T' → Nf Δ (subCtx x) T'
+  subNf x toSub (lambda e) = lambda (subNf (next x) {!  toSub !} e)
+  subNf x toSub (Tlambda e) = Tlambda {!   !} -- (subNf {! x  !} {! toSub  !} e)
+  subNf x toSub (ne x₁) = {!   !}
+  subNf x toSub (cumu e) = cumu (subNf x toSub e)
+  appNf0 : ∀{Δ  Γ nOut TOut} → (T : Type 0 Δ)
     → Nf {0} Δ Γ T
-    → (count : ArgCount T)
+    → (count : ArgCount T nOut TOut)
     → inputs count Γ
-    → Nf Δ Γ (output count)
+    → Nf Δ Γ TOut
   appNf0 (A ⇒ B) (lambda e) (one count) (a , inputs)
-    = appNf0 B {! subNf e same a  !} count inputs
+    = appNf0 B (subNf same a e) count inputs
   appNf0 T (ne x) (one count) (a , inputs) = {!   !}
   appNf0 T e none tt = e
-  appNfS : ∀{n Δ Δ' Γ Tsubbed} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
+  appNfS : ∀{n Δ Δ' Γ Tsubbed nOut TOut} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
     -- → Tsubbed ≡ subTypen sub T
     → Nf {suc n} Δ Γ (subTypen sub T) -- Tsubbed
-    → (count : ArgCount (subTypen sub T)) -- Tsubbed)
+    → (count : ArgCount (subTypen sub T) nOut TOut) -- Tsubbed)
     → inputs count Γ
-    → Nf Δ Γ (output count)
+    → Nf Δ Γ TOut
     -- crucial idea: we are doing induction on T, not e.
     -- we then do secondary recursion (not induction) on e, which should by all rights be harder but Agda is being nice here.
     -- then, the varapp and count=none case at the bottom is really a separate case for each type case.
     -- but thankfully Agda lets us combine them all into one case.
   appNfS (Var X) sub e count inputs = {!   !} -- really just have to prove sub X = X, so count = 0.
   appNfS (A ⇒ B) sub (lambda e) (one count) (a , inputs)
-    = appNfS B sub {! subNf e same a  !} count inputs
+    = appNfS B sub (subNf same a e) count inputs
   appNfS (⋁ T) sub (Tlambda e) (One X count) inputs
-    = appNfS T (append1subn sub X) {! subNf sub e  !} {! subCount sub ecount  !} inputs
-  appNfS (cumu T) sub (cumu e) count inputs = {! cumu  !}
+    = appNfS T (append1subn sub X) {! e  !} {! count  !} {! inputs  !}
+    -- where does the liftTSubn come from in e's type?
+    -- TODO: filling in the the e and count cases is the main work that is left
+    -- in this implementation.
+    -- IDEA: we are renaming to a larger context, then subbing back!
+    -- Building on idea at bottom, sub would have a Weakening Δ Δ', which
+    -- relates Δ' to Δ by showing that it is just Δ with extra stuff inserted.
+    -- So, Δ  <  (Δ , n)
+    --
+    --     Δ  <  Δ'
+  appNfS (cumu T) sub (cumu e) (cumu count) inputs
+    = appNf (subTypen sub T) e count inputs
   appNfS T sub (ne u{-varapp case-}) count inputs = {!   !}
   appNfS T sub e none tt = e
 
-  appNf : ∀{n Δ Γ} → (T : Type n Δ)
+  appNf : ∀{n Δ Γ nOut TOut} → (T : Type n Δ)
     → Nf {n} Δ Γ T
-    → (count : ArgCount T)
+    → (count : ArgCount T nOut TOut)
     → inputs count Γ
-    → Nf Δ Γ (output count)
+    → Nf Δ Γ TOut
   appNf {zero} = appNf0
-  appNf {suc n} T e count inputs
+  appNf {suc n} {_} {_} {nOut} {TOut} T e count inputs
     -- = appNfS T idSubn (subst (λ T → Nf _ _ T) idSubnFact e) (subst ArgCount idSubnFact count) inputs
-    = appNfS T idSubn (subst (λ T → Nf _ _ T) idSubnFact e) {! subst ArgCount idSubnFact count  !} {! inputs  !}
-
+    = appNfS T idSubn
+      (subst (λ T → Nf _ _ T) idSubnFact e)
+      (subst (λ T → ArgCount T nOut TOut) idSubnFact count)
+      {! inputs  !}
 
 {-
-TODO
-
-1) The idea of this file is to have only appv and subv actually use Typos,
-  everything else is just parametrized by regular stuff. But then, that means
-  that Agda must be able to know that (subType sub T) can e.g. only give
-  an ⇒ from an ⇒, and not from a Var. To do this, the sub must keep track of
-  levels better. Because we will have the type of the sub be one less than the
-  level of the type, so it could not come from a Var.
-
-
 -------------------------------------------------------------------------------
   "PAPER" PROOF:
 
@@ -294,17 +312,91 @@ TODO
     and so sub(X) = X.
   -- T = cumu A. So, sub(cumu A) = cumu (sub(A))
     then e = cumu e'. Simply recurse with [n-1, sub(A), idSub, e']
-    so need idSub(sub(A)) = sub(A) DEFINITIONALLY (or at least propositionally...)
+    so need idSub(sub(A)) = sub(A)
 -------------------------------------------------------------------------------
 
 So, the takeaway is that it is crucial that sub be defined in a way so that
 e.g. sub(A ⇒ B) = sub(A) ⇒ sub(B) is DEFINITIONALLY true.
 
-We also need sub(X) = X, for X at level n+1 and sub at level n. DEFINITIONALLY
-TODO: what does this even mean? the input and output will be in different Δ
-It just means that the output must be a variable.
+We also need sub(X) = X, for X at level n+1 and sub at level n.
 
-NOTE: I believe that these things are true of good ol' fashioned TSub?
-Are they?
+--------------------------------------------------------------------------------
 
+PLAN: TODO:
+In several cases, there is a pattern of substituting from something that is weakened.
+Currently, we have
+Sub : Exp Γ → Exp (smaller Γ)
+
+Consider
+Sub : Exp (weakened Γ) → Exp Γ
+
+
+IDEA:
+Δ₁    Δ₂
+X ⇔  A
+Y ⇔  B
+      C
+Z ⇔  D
+      E
+
+Is a renaming Δ₁ → Δ₂ - really a WEAKENING, not a renaming
+To sub Δ₂ → Δ₁, only have to supply missing types, so C and E.
+-}
+
+-- DO I really need ANY weakening and not just single weakenings?
+data Weakening : TCtx → TCtx → Set where
+  ∅ : Weakening ∅ ∅
+  same : ∀{Δ₁ Δ₂ n} → Weakening Δ₁ Δ₂ → Weakening (Δ₁ , n) (Δ₂ , n)
+  skip : ∀{Δ₁ Δ₂ n} → Weakening Δ₁ Δ₂ → Weakening Δ₁ (Δ₂ , n)
+
+missingTypes : ∀{Δ₁ Δ₂} → Weakening Δ₁ Δ₂ → Set
+missingTypes ∅ = ⊤
+missingTypes (same ren) = missingTypes ren
+missingTypes (skip {Δ₁} {Δ₂} {n} ren) = Type n Δ₁ × missingTypes ren
+
+TSub2 : TCtx → TCtx → Set
+TSub2 Δ₁ Δ₂ = Σ (Weakening Δ₂ Δ₁) (λ ren → missingTypes ren)
+
+-- data TSub3 : (Δ₁ Δ₂ : TCtx) → Weakening Δ₂ Δ₂ → Set
+  -- ∅ : TSub3 ∅ ∅ ∅
+  -- same
+  -- skip
+
+-- subΓ : ∀{} → (wea : Weakening Δ Δ') → (sub : TSub3 Δ' Δ wea)
+--  → Ctx Δ' → Ctx Δ
+
+-- subType : ∀{} → (wea : Weakening Δ Δ') → (sub : TSub3 Δ' Δ wea)
+--  → Type Δ' → Type Δ
+
+-- subNf : ∀{} → (wea : Weakening Δ Δ') → (sub : TSub3 Δ' Δ wea)
+--  → Nf Δ' Γ T
+--  → Nf Δ (subΓ sub Γ) (subType sub T)
+
+-- Then, for e case of TLambda case of appNfS, need
+-- subΓ (skip idSub) (weakenΓ (skip idWeak) Γ) = Γ
+-- subType (skip idSub) (subType (liftTSubn sub) T)
+--    = (subTypen (append1susbn sub X) T)
+
+-- idSub = same same same ..., and liftTSubn = same, append1subn = skip
+--
+-- IDEA: prevent ever having to use idSub and idRen by making subs and weaks
+-- only one position instead of all/any.
+
+-- TODO TODO TODO TODO TODO:
+-- What if appNfS inputs (e : Nf Δ' ? T) instead of (e : Nf Δ Γ sub(T))
+-- Also would input Γ' : Ctx Δ' I guess?
+
+-- The main determining factor in if that works is: can I implement normalize
+-- normalize : Exp Δ Γ T → Nf Δ Γ T
+-- using it?
+
+-- ALSO: would need (count : ArgCount Δ' T) as well. PROBLEM: is that ArgCount
+-- uses subType in TLambda case. Maybe need ArgCount parametrized by Typo.
+-- Make System-F....-medium.agda
+-- WAIT NO!!!! Nf references ArgCount!!!!!!!!!!!!!!! TODO
+
+think about above comments tommorow.
+
+{-
+TODO: think about these things in terms of paper proof again.
 -}
