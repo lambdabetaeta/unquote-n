@@ -243,6 +243,17 @@ subTypen sub (A ⇒ B) = subTypen sub A ⇒ subTypen sub B
 subTypen sub (⋁ T) = ⋁ (subTypen (liftTSubn sub) T)
 subTypen sub (cumu T) = cumu (subTypen sub T)
 
+subCtxn : ∀{n Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Ctx Δ₁ → Ctx Δ₂
+subCtxn sub ∅ = ∅
+subCtxn sub (Γ , T) = subCtxn sub Γ , subTypen sub T
+
+subNfn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m} Δ₁ Γ T
+  → Nf Δ₂ (subCtxn sub Γ) (subTypen sub T)
+subNfn sub (lambda e) = lambda (subNfn sub e)
+subNfn sub (Tlambda e) = Tlambda {! subNfn (liftTSubn sub) e  !}
+subNfn sub (ne x) = {!   !}
+subNfn sub (cumu e) = cumu (subNfn sub e)
+
 idSubn : ∀{n Δ} → TSubn n Δ Δ
 idSubn = (λ p x → Var x) , λ p x → x
 
@@ -321,7 +332,8 @@ mutual
   appNfS (A ⇒ B) sub (lambda e) (one count) (a , inputs)
     = appNfS B sub {! subNf e same a  !} count inputs
   appNfS (⋁ T) sub (Tlambda e) (One X count) inputs
-    = appNfS T (append1subn sub X) {! subNf sub e  !} {! subCount sub ecount  !} inputs
+    = {!   !}
+    -- = appNfS T (append1subn sub X) {! subNf sub e  !} {! subCount sub ecount  !} inputs
   appNfS (cumu T) sub (cumu e) count inputs = {! cumu  !}
   appNfS T sub (ne u{-varapp case-}) count inputs = {!   !}
   appNfS T sub e none tt = e
@@ -333,7 +345,8 @@ mutual
     → Nf Δ Γ (output count)
   appNf {zero} = appNf0
   appNf {suc n} T e count inputs
-    = appNfS T idSubn (subst (λ T → Nf _ _ T) idSubnFact e) (subst ArgCount idSubnFact count) inputs
+    = {!   !}
+    -- = appNfS T idSubn (subst (λ T → Nf _ _ T) idSubnFact e) (subst ArgCount idSubnFact count) inputs
 
 
 {-
