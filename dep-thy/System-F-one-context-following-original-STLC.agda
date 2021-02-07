@@ -11,6 +11,13 @@ open import Data.Sum
 open import Data.Empty
 
 mutual
+  -- NOTE: with self types, everything in context is of same context, rather than
+  -- sequentially increasing contexts. This eliminates the need for weakening in
+  -- the next constructor of InCtx, which in turn removes the need to prove certian
+  -- commutivity lemmas later.
+
+  -- Context = Self(Γ) . List (Σ n (Type n Γ))
+
   data Context : Set where
     ∅ : Context
     _,_ : ∀{n} → (Γ : Context) → Type n Γ → Context
@@ -44,9 +51,50 @@ mutual
   weakenType pre W (type n) = type n
   weakenType pre W (Var x) = Var (weakenICX pre W x)
 
-  -- weakenTypecomm : ∀{Γ Γp1 Γp2 n1 n2} → (T1 : Type n1 Γp1) → (T2 : Type n2 Γp2)
-    -- → (pre1 : Pre Γp1 Γ) → (pre2 : Pre Γp2 Γ)
-    -- → weakenType
+  -- TASK: define weakenTypeComm.
+
+  weakenPreLeftCtx : ∀{Γ Γpre Γw n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
+    → Pre Γw Γ → Context
+  weakenPreLeftCtx {Γ} {_} {Γw} same W same = Γw
+  weakenPreLeftCtx {Γ} {_} {Γw} same W (next prew) = Γw
+  weakenPreLeftCtx (next {_} {_} {_} {T} pre) W same = weakenΓ (next {_} {_} {_} {T} pre) W
+  weakenPreLeftCtx (next pre) W (next prew) = weakenPreLeftCtx pre W prew
+
+  weakenPreLeftCtxType : ∀{Γ Γpre Γw n m} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
+    → (prew : Pre Γw Γ)
+    → Type m Γw → Type m (weakenPreLeftCtx pre W prew)
+  weakenPreLeftCtxType same W same T = T
+  weakenPreLeftCtxType same W (next prew) T = T
+  weakenPreLeftCtxType (next pre) W same T = weakenType (next pre) W T
+  weakenPreLeftCtxType (next pre) W (next prew) T = weakenPreLeftCtxType pre W prew T
+
+  weakenPre : ∀{Γ Γpre Γw n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
+    → (prew : Pre Γw Γ)
+    → Pre (weakenPreLeftCtx pre W prew) (weakenΓ pre W)
+  weakenPre same W same = next same
+  weakenPre same W (next prew) = next (next prew)
+  weakenPre (next pre) W same = same
+  weakenPre (next pre) W (next prew) = next (weakenPre pre W prew)
+
+
+  weakenCtxComm : ∀{nA n1 n2 Γ Γ₁ Γ₂} → {A : Type nA Γ}
+    → {W₁ : Type n1 Γ₁} → {W₂ : Type n2 Γ₂}
+    → (pre₁ : Pre Γ₁ Γ) → (pre₂ : Pre Γ₂ Γ)
+    → weakenΓ (weakenPre pre₁ W₁ pre₂) (weakenPreLeftCtxType pre₁ W₁ pre₂ W₂)
+      ≡ weakenΓ (weakenPre pre₂ W₂ pre₁) (weakenPreLeftCtxType pre₂ W₂ pre₁ W₁)
+  weakenCtxComm same same = {!   !} -- clearly something is defined wrong above, as this is clearly incorrect.
+  weakenCtxComm same (next pre₂) = refl
+  weakenCtxComm (next pre₁) same = refl
+  -- May need a custom dependently typed cong₂
+  weakenCtxComm (next pre₁) (next pre₂) = {! cong₂ _,_ (weakenCtxComm pre₁ pre₂) (weakenTypeComm pre₁ pre₂)  !}
+
+  weakenTypeComm : ∀{nA n1 n2 Γ Γ₁ Γ₂} → {A : Type nA Γ}
+    → {W₁ : Type n1 Γ₁} → {W₂ : Type n2 Γ₂}
+    → (pre₁ : Pre Γ₁ Γ) → (pre₂ : Pre Γ₂ Γ)
+    → weakenType (weakenPre pre₁ W₁ pre₂) (weakenPreLeftCtxType pre₁ W₁ pre₂ W₂) (weakenType pre₁ W₁ A)
+      ≡ let value = weakenType (weakenPre pre₂ W₂ pre₁) (weakenPreLeftCtxType pre₂ W₂ pre₁ W₁) (weakenType pre₂ W₂ A)
+        in subst (λ Γ → Type nA Γ) (weakenCtxComm pre₂ pre₁) value
+  weakenTypeComm = {!   !}
 
   data InCtx : ∀{n} → (Γ : Context) → Type n Γ → Set where
     same : ∀{Γ n T} → InCtx {n} (Γ , T) (weakenType same T T)
@@ -58,51 +106,9 @@ mutual
     → InCtx {m} Γ T → InCtx {m} (weakenΓ pre W) (weakenType pre W T)
   weakenICX same W x = next x
   weakenICX {Γ} {_} {_} {_} {T} (next pre) W (same {_} {_} {T₁})
-    -- = {! InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁}  !}
-    = {! subst (λ A → InCtx (weakenΓ pre W , weakenType pre W T₁) A) ? (InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁})  !}
+    = {! InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁}  !}
+    -- = {! subst (λ A → InCtx (weakenΓ pre W , weakenType pre W T₁) A) ? (InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁})  !}
   weakenICX (next pre) W (next x) = {! InCtx.next (weakenICX pre W x)  !}
-
-  data InCtx' : Context → Set where
-    same : ∀{Γ m} → {T : Type m Γ} → InCtx' (Γ , T)
-    next : ∀{Γ m} → {T : Type m Γ} → InCtx' Γ → InCtx' (Γ , T)
-
-  levelAt : ∀{Γ} → InCtx' Γ → ℕ
-  levelAt (same {_} {m}) = m
-  levelAt (next x) = levelAt x
-
-  ctxAt : ∀{Γ} → InCtx' Γ → Context
-  ctxAt (same {Γ}) = Γ
-  ctxAt (next x) = ctxAt x
-
-  typeAt : ∀{Γ} → (x : InCtx' Γ) → Type (levelAt x) (ctxAt x)
-  typeAt (same {_} {_} {T}) = T
-  typeAt (next x) = typeAt x
-
-  weakenICX' : ∀{Γ Γpre n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
-    → InCtx' Γ → InCtx' (weakenΓ pre W)
-  weakenICX' same W x = next x
-  weakenICX' (next pre) W same = same
-  weakenICX' (next pre) W (next x) = next (weakenICX' pre W x)
-
-  weakenICXlevel≡ : ∀{Γ Γpre n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
-    → (x : InCtx' Γ)
-    → levelAt (weakenICX' pre W x) ≡ levelAt x
-  weakenICXlevel≡ same W x = refl
-  weakenICXlevel≡ (next pre) W same = refl
-  weakenICXlevel≡ (next pre) W (next x) = weakenICXlevel≡ pre W x
-
-  -- TODO: need to really think about what this is, is pre before or after x, etc.
-  -- Type will be complicated.
-
-  -- weakenICXCtx≡ : ∀{Γ Γpre n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
-  --   → (x : InCtx' Γ)
-  --   → ctxAt (weakenICX' pre W x) ≡ weakenΓ pre W (ctxAt x)
-  -- weakenICXCtx≡ same W x = refl
-  -- -- Something is suspiscious here!!!!!!!!!!!
-  -- weakenICXCtx≡ (next pre) W same = {!   !} -- TODO: this is not just hard to prove, but wrong!!!!!!!!!!!!!
-  -- weakenICXCtx≡ (next pre) W (next x) = weakenICXCtx≡ pre W x
-
-  -- weakenICXtype≡
 
   {-
   data Exp : ∀{n} → (Γ : Context) → Type n Γ → Set where

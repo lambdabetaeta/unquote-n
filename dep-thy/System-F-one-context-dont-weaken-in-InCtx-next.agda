@@ -61,50 +61,48 @@ mutual
   preCompare pre₁ same = inj₁ pre₁ -- They actually give the same anwer on overlap.
   preCompare (next pre₁) (next pre₂) = preCompare pre₁ pre₂ -- could resolve with four cases, for all four options.
 
+  transPre : ∀{Γ₁ Γ₂ Γ₃} → (Pre Γ₁ Γ₂) → (Pre Γ₂ Γ₃) → Pre Γ₁ Γ₃
+  transPre pre₁ same = pre₁
+  transPre pre₁ (next pre₂) = next (transPre pre₁ pre₂)
+
   -- If Γw is a prefix of Γ, and Γ is weakened, what does that do to Γw?
   -- call this function to find out.
   weakenPreLeftCtx : ∀{Γ Γpre Γw n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
     → (toWeaken : Pre Γw Γ) → Context
-  weakenPreLeftCtx {Γ} {.Γ} {Γw} same W toWeaken = Γw
-  weakenPreLeftCtx {γ} {ΓPre} {Γw} (next {_} {_} {_} {T} pre) W same
-    = weakenΓ (next {_} {_} {_} {T} pre) W -- should this be (next pre) or pre?
-  weakenPreLeftCtx {Γ} {ΓPre} {Γw} (next {_} {_} {_} {T} pre) W (next toWeaken)
-    = (weakenPreLeftCtx pre W toWeaken)
+  weakenPreLeftCtx {_} {_} {Γw} pre W toWeaken with preCompare pre toWeaken
+  ... | inj₁ p = weakenΓ p W
+  ... | inj₂ p = Γw
 
   weakenPre : ∀{Γ Γpre Γw n} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
     → (toWeaken : Pre Γw Γ)
     → Pre (weakenPreLeftCtx pre W toWeaken) (weakenΓ pre W)
-  weakenPre same W toWeaken = next toWeaken
-  weakenPre (next pre) W same = same -- looking at above definition, this should work...
-  weakenPre (next pre) W (next toWeaken) = next (weakenPre pre W toWeaken)
+  weakenPre pre W toWeaken with preCompare pre toWeaken
+  ... | inj₁ p = {!   !}
+  ... | inj₂ p = {! toWeaken  !}
 
   weakenTypeInPreCtx : ∀{Γ Γpre Γw n m} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
     → (toWeaken : Pre Γw Γ)
     → Type m Γw → Type m (weakenPreLeftCtx pre W toWeaken)
-  weakenTypeInPreCtx same W toWeaken T = T
-  weakenTypeInPreCtx (next pre) W same T = weakenType (next pre) W T
-  weakenTypeInPreCtx (next pre) W (next toWeaken) T = weakenTypeInPreCtx pre W toWeaken T
-
-  -- data InCtx' : ∀{n} → (Γ : Context) → Type n Γ → Set where
-  --   var : ∀{Γ Γpre n} → {T : Type n Γpre} → (pre : Pre (Γpre , T) Γ)
-  --     → InCtx' Γ (weakenTypeByPre {!   !} T )
-
-  -- weakenICX' : ∀{} →
+  weakenTypeInPreCtx = {!   !}
 
   weakenICX : ∀{Γ Γpre Γx n m T} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
     → (prex : Pre Γx Γ)
     → InCtx {m} Γ prex T
     → InCtx {m} {weakenPreLeftCtx pre W prex}
       (weakenΓ pre W) (weakenPre pre W prex) (weakenTypeInPreCtx pre W prex T) --(weakenType pre W T)
-  weakenICX same W prex x = next x
-  weakenICX (next pre) W .(next same) same = {! same  !}
-  weakenICX (next pre) W .(next _) (next x) = next (weakenICX pre W _ x)
-  -- weakenICX same W x = next x
-  -- weakenICX {Γ} {_} {_} {_} {T} (next pre) W (same {_} {_} {T₁})
-  --   -- = {! InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁}  !}
-  --   = {! subst (λ A → InCtx (weakenΓ pre W , weakenType pre W T₁) A) ? (InCtx.same {weakenΓ pre W} {_} {weakenType pre W T₁})  !}
-  -- weakenICX (next pre) W (next x) = {! InCtx.next (weakenICX pre W x)  !}
-  --
+  weakenICX = {!   !}
+
+
+
+
+  data InCtx' : ∀{n} → (Γ : Context) → Type n Γ → Set where
+    var : ∀{Γ Γpre n} → {T : Type n Γpre} → (pre : Pre (Γpre , T) Γ)
+      → InCtx' Γ (weakenTypeByPre (transPre (next same) pre) T )
+
+  weakenICX' : ∀{n Γ Γpre T} → (pre : Pre Γpre Γ) → (W : Type n Γpre)
+    → InCtx' {n} Γ T
+    → InCtx' (weakenΓ pre W) (weakenType pre W T)
+  weakenICX' pre W (var pre₁) = var {! weakenPre pre W pre₁  !}
 
   {-
     IDEA of the method in this FILE: (I don't know if it will work, but I am trying:)
