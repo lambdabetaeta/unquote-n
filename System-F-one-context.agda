@@ -24,7 +24,9 @@ mutual
     Var : ∀{Γ n} → InCtx Γ (type n) → Type (suc n) Γ
     -- fromE : ∀{Γ n} → Nf Γ (type n) → Type n Γ -- If I ever use this, should be Nf, as even Exps need to use Nf's for types.
 
-  data 1Weakening : Context → Context → Set where
+  -- The entire reason that we need 1Subs in the proof, is so that later we can say
+  -- "if y = x", where x is the var being subbed for, y is some given var.
+  data 1Weakening : Context → Context → Set where -- S,Z nat repr
     end : ∀{Γ n} → {T : Type n Γ} → 1Weakening Γ (Γ , T)
     next : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
       → (wea : 1Weakening Γ₁ Γ₂)
@@ -34,12 +36,6 @@ mutual
     idWea : ∀{Γ} → Weakening Γ Γ
     _,_ : ∀{Γ₁ Γ₂ Γ₃} → Weakening Γ₁ Γ₂ → 1Weakening Γ₂ Γ₃ → Weakening Γ₁ Γ₃
     -- _,_ : ∀{Γ₁ Γ₂ Γ₃} → 1Weakening Γ₁ Γ₂ → Weakening Γ₂ Γ₃ → Weakening Γ₁ Γ₃
-
-  data 1Sub : ∀{Γ₁ Γ₂} → 1Weakening Γ₂ Γ₁ → Set where
-    end : ∀{Γ n} → {T : Type n Γ} → Exp Γ T → 1Sub (end {Γ} {n} {T})
-    next : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
-      → {wea : 1Weakening Γ₁ Γ₂} → 1Sub wea
-      → 1Sub (next {Γ₁} {Γ₂} {n} {T} wea)
 
   data InCtx : ∀{n} → (Γ : Context) → Type n Γ → Set where
     var : ∀{n Γpre T Γ} → (wea : Weakening (Γpre , T) Γ)
@@ -58,14 +54,14 @@ mutual
   1weakenVar : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
     → (wea : 1Weakening Γ₁ Γ₂)
     → InCtx Γ₁ T → InCtx Γ₂ (1weakenType wea T)
-  1weakenVar wea (var wea₁) = var (wea₁ , wea)
+  1weakenVar w (var wea) = var (wea , w)
 
   data Exp : ∀{n} → (Γ : Context) → Type n Γ → Set where
     lambda : ∀{n Γ A B} → Exp {n} (Γ , A) B → Exp Γ (Π A B)
     cumu : ∀{Γ n T} → Exp {n} Γ T → Exp {suc n} Γ (cumu T)
     var : ∀{n Γ T} → InCtx {n} Γ T → Exp Γ T
     app : ∀{Γ n A B} → Exp {n} Γ (Π A B) → (a : Exp Γ A) → Exp {n} Γ {! subType a in B  !}
-    fromT : ∀{Γ n} → Type n Γ → Exp Γ (type n)
+    fromT : ∀{Γ n} → Type n Γ → Exp Γ (type n) -- needed for e.g. applying id : ∀X . X → X  to a specific type.
 
   -- Normal form
   data Nf : ∀{n} → (Γ : Context) → Type n Γ → Set where
@@ -89,11 +85,40 @@ mutual
     cumu : ∀{n Γ T nOut TOut}
       → Args {n} Γ T nOut TOut → Args {suc n} Γ (cumu T) nOut TOut
 
+  data 1Sub : ∀{Γ₁ Γ₂} → 1Weakening Γ₂ Γ₁ → Set where
+    end : ∀{Γ n} → {T : Type n Γ} → Nf Γ T → 1Sub (end {Γ} {n} {T})
+    next : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
+      → {wea : 1Weakening Γ₁ Γ₂} → 1Sub wea
+      → 1Sub (next {Γ₁} {Γ₂} {n} {T} wea)
+
+  data 1Sub' : Context → Context → Set where -- can we get rid of weakening and just replace with sub?
+    end : ∀{Γ n} → {T : Type n Γ}
+      → Nf Γ T
+      → 1Sub' (Γ , T) Γ
+    next : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
+      → (sub : 1Sub' Γ₁ Γ₂)
+      → 1Sub' (Γ₁ , T) (Γ₂ , 1subType' sub T)
+
+  1subType' : ∀{Γ₁ Γ₂ n} → 1Sub' Γ₁ Γ₂ → Type n Γ₁ → Type n Γ₂
+  1subType' sub (Π A B) = Π (1subType' sub A) (1subType' (next sub) B)
+  1subType' sub (cumu T) = cumu (1subType' sub T)
+  1subType' sub (type n) = type n
+  1subType' sub (Var x) = Var {!   !}
+
+  1subVar' : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
+    → (sub : 1Sub' Γ₁ Γ₂)
+    → InCtx Γ₁ T → Nf Γ₂ (1subType' sub T)
+  1subVar' (end e) (var idWea) = {! sub (weaken e)  !}
+  1subVar' (end e) (var (wea , x)) = {! Exp.var (var wea)  !}
+  1subVar' (next sub) (var idWea) = {!   !}
+  1subVar' (next sub) (var (wea , x)) = {! 1subVar' sub (var wea)  !}
+
   1subVar : ∀{Γ₁ Γ₂ n} → {T : Type n Γ₁}
     → {wea : 1Weakening Γ₁ Γ₂}
     → 1Sub wea
-    → InCtx Γ₂ (1weakenType wea T) → Exp Γ₁ T -- can't induct on x, so maybe subs can't be reverse of weakening here?
-  1subVar sub x = {! x  !} -- If I don't have subs reverse of weakening, then will lambda case in appNf still work?
+    → InCtx Γ₂ (1weakenType wea T) → Nf Γ₁ T -- can't induct on x, so maybe subs can't be reverse of weakening here?
+  1subVar (end e) x = {! e  !}
+  1subVar (next sub) x = {!   !}
   -- Not to mention how can subs even work on this kind of variables that are weakenings?
   -- So definitely for the sake of argument just TRY standard subs, not reverse of weaks.
 

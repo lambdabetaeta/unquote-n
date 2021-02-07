@@ -409,27 +409,6 @@ subNf3''' T X .∅ ∅ e = {! subNf3 ...   !} -- requires (weaken idWea)
 subNf3''' T X .(same _) (same sub) e = {! weaken (subNf3''' _ sub e)  !}
 subNf3''' T X .(skip _) (skip sub x) e = {!   !}
 
--- Question: what is known about sub used in e case that is not true about subs in general?
--- For example, one thing is that X is NOT contained in Γ, although it may be contained in T.
-
--- Its like we are weakening from Δ to Δ', but also Δ to (Δ ,  n).
--- We have a sub₁ from Δ' to Δ, and also sub₂ from (Δ , n) to Δ.
--- e : sub₁(T), and we want sub₂(e) : sub₁(sub₂)(T)
--- But instead what we get normally is sub₂(e) : sub₁ (sub₂ (T))
--- Maybe I need to define subSub, which takes a Δ₁ → Δ₂ and an extention, and
---    gets a sub extention(Δ₁) → extention(Δ₂)
--- In this specific case its (Sub Δ₁ Δ₂) → (Sub (Δ₁ , n) (Δ₂ , n))
--- Which is just liftSub, or "same" in this file. But, we need here also
--- "liftNf", which goes (Nf sub(T)) → (Nf (lift sub)(T))
-
--- I need to think more about substitution arithmetic. Need definition of substitution
--- so that all of these things work out.
-
--- IDEA: IDEA: IDEA: IDEA:
--- given X : Δ, sub is a map InTCtx Δ → InTCtx Δ', then
--- 1Sub at X can be mapped to a 1Sub at sub(X).
---
-
 appNfS3 : ∀{n Δ Δ' Γ Tsubbed nOut TOut}
   → (wea : Weakening n Δ Δ')
   → (sub : TSub3 wea) -- from Δ' → Δ, opposite direction from weakening
@@ -446,7 +425,7 @@ appNfS3 wea sub (⋁ T) (Tlambda e) (One X count)
   -- = appNfS3 (skip wea) (skip sub X) T (subNf3'' (skip idWea) (skip idSub3 X) {! e  !}) {! count  !}
   = appNfS3 (skip wea) (skip sub X) T
     -- (subNf3''' T X wea sub e)
-    {! e  !}
+    (subNf3''' T X wea sub {! e  !} )
     {! count  !}
 appNfS3 wea sub (cumu T) (cumu e) (cumu count)
   = appNf (subType3 wea sub T) e count
