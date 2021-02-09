@@ -194,12 +194,6 @@ mutual
     cumu : ∀{n Δ Γ T nOut TOut}
       → Args {n} {Δ} Γ T nOut TOut → Args {suc n} Γ (cumu T) nOut TOut
 
-nfToExp : ∀{n Δ Γ T} → Nf {n} Δ Γ T → Exp {n} Δ Γ T
-nfToExp (lambda e) = lambda (nfToExp e)
-nfToExp (Tlambda e) = Tlambda (nfToExp e)
-nfToExp (ne x args) = {!   !}
-nfToExp (cumu e) = cumu (nfToExp e)
-
 idSubnApplyFact : ∀{n m Δ x} → Var x ≡ applySub {n} {m} (idSubn {n} {Δ}) x
 idSubnApplyFact {_} {_} {_} {same} = refl
 idSubnApplyFact {_} {_} {_} {next x} = cong (renType weaken1Δ) idSubnApplyFact
@@ -238,12 +232,21 @@ liftManySub [] sub = sub
 -- liftManySub (x ∷ l) sub = liftManySub l (liftTSubn sub)
 liftManySub (x ∷ l) sub = liftTSubn (liftManySub l sub)
 
+subICXcomm : ∀{n m k Δ₁ Δ₂} → (l : List ℕ) → (x : InTCtx (appendMany Δ₁ l) k)
+  → (sub : TSubn n Δ₁ Δ₂)
+  →
+    applySub (liftManySub l (liftTSubn sub)) (liftManyRen l weaken1Δ x)
+    ≡ renType (liftManyRen l (weaken1Δ {_} {m})) (applySub (liftManySub l sub) x)
+subICXcomm l x ∅ = {! l  !}
+subICXcomm l x (nextn sub T) = {! x  !}
+subICXcomm l x (nextm sub) = {!   !}
+
 subTypecomm : ∀{n m k Δ₁ Δ₂} → (l : List ℕ) → (T : Type k (appendMany Δ₁ l)) → (sub : TSubn n Δ₁ Δ₂)
   →
     (subTypen (liftManySub l (liftTSubn sub)) (renType (liftManyRen l weaken1Δ) T ))
     ≡ (renType (liftManyRen l (weaken1Δ {_} {m})) (subTypen (liftManySub l sub) T ))
     -- ≡ (subTypen (liftTSubn (liftManySub l sub)) (renType (liftManyRen l weaken1Δ) T))
-subTypecomm l (Var x) sub = {!   !}
+subTypecomm l (Var x) sub = subICXcomm l x sub
 subTypecomm l (A ⇒ B) sub = cong₂ _⇒_ (subTypecomm l A sub) (subTypecomm l B sub)
 subTypecomm l (⋁ T) sub = cong ⋁ (subTypecomm (_ ∷ l) T sub )
 subTypecomm l (cumu T) sub = cong cumu (subTypecomm l T sub)
@@ -255,7 +258,6 @@ subΓcomm : ∀{n m Δ₁ Δ₂} → (Γ : Ctx Δ₁) → (sub : TSubn n Δ₁ �
 subΓcomm ∅ sub = refl
 subΓcomm (Γ , T) sub = cong₂ _,_ (subΓcomm Γ sub) (subTypecomm [] T sub)
 
--- TODO: Do I need this?
 subNfTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m} Δ₁ Γ T
   → Nf {m} Δ₂ (subΓn sub Γ) (subTypen sub T)
 subNfTSubn sub (lambda e) = lambda (subNfTSubn sub e)
@@ -263,6 +265,44 @@ subNfTSubn {_} {_} {_} {_} {Γ} sub (Tlambda e)
   = Tlambda (subst (λ Γ → Nf _ Γ _ ) (subΓcomm Γ sub) (subNfTSubn (liftTSubn sub) e))
 subNfTSubn sub (cumu e) = cumu (subNfTSubn sub e)
 subNfTSubn sub (ne x args) = {!   !}
+
+liftCommType : ∀{Δ₁ Δ₂ n m} → (l : List ℕ) → {ren : TRen Δ₁ Δ₂}
+  → (T : Type m (appendMany Δ₁ l))
+  → renType (liftManyRen l (liftTRen {_} {_} {n} ren)) (renType (liftManyRen l weaken1Δ) T)
+    ≡ renType (liftManyRen l weaken1Δ) (renType (liftManyRen l ren) T)
+liftCommType l (Var x) = cong Var {!   !}
+liftCommType l (A ⇒ B) = cong₂ _⇒_ (liftCommType l A) (liftCommType l B)
+liftCommType l (⋁ T) = cong ⋁ (liftCommType (_ ∷ l) T)
+liftCommType l (cumu T) = cong cumu (liftCommType l T)
+
+liftCommΓ : ∀{Δ₁ Δ₂ n} → {ren : TRen Δ₁ Δ₂} → (Γ : Ctx Δ₁)
+  → (renΓ ((liftTRen {_} {_} {n}) ren) (renΓ weaken1Δ Γ))
+    ≡ renΓ weaken1Δ (renΓ ren Γ)
+liftCommΓ ∅ = refl
+liftCommΓ (Γ , T) = cong₂ _,_ (liftCommΓ Γ) (liftCommType [] T)
+
+-- TODO: Do I need this? (and therefore liftCommType and liftCommΓ as well?)
+renNf : ∀{n Δ₁ Δ₂ Γ T} → (ren : TRen Δ₁ Δ₂)
+  → Nf {n} Δ₁ Γ T → Nf Δ₂ (renΓ ren Γ) (renType ren T)
+renNf ren (lambda e) = lambda (renNf ren e)
+renNf ren (Tlambda e) = Tlambda (subst (λ Γ → Nf _ Γ _) (liftCommΓ _) (renNf (liftTRen ren) e))
+renNf ren (cumu e) = cumu (renNf ren e)
+renNf ren (ne x args) = {!   !}
+
+subRenCancelType : ∀{Δ n m} → (l : List ℕ) → {X : Type n Δ} → (T : Type m (appendMany Δ l))
+  → subTypen (liftManySub l (append1subn idSubn X))
+      (renType (liftManyRen l weaken1Δ) T)
+    ≡ T
+subRenCancelType l (Var x) = {!   !}
+subRenCancelType l (A ⇒ B) = cong₂ _⇒_ (subRenCancelType l A) (subRenCancelType l B)
+subRenCancelType l (⋁ T) = cong ⋁ (subRenCancelType (_ ∷ l) T)
+subRenCancelType l (cumu T) = cong cumu (subRenCancelType l T)
+
+subRenCancelΓ : ∀{Δ n} → {X : Type n Δ} → (Γ : Ctx Δ)
+  → (subΓn (append1subn idSubn X) (renΓ weaken1Δ Γ))
+    ≡ Γ
+subRenCancelΓ ∅ = refl
+subRenCancelΓ (Γ , T) = cong₂ _,_ (subRenCancelΓ Γ) (subRenCancelType [] T)
 
 mutual
   subNf : ∀{n n' Δ Γ T T'} → (x : InCtx Γ T)
@@ -290,7 +330,9 @@ mutual
   appNfS (A ⇒ B) sub (lambda e) (one args a)
     = appNfS B sub (subNf same a e) args
   appNfS (⋁ T) sub (Tlambda e) (One X args)
-    = appNfS T (append1subn sub X) {! subNfTSubn (append1subn idSubn X) e  !} {! args  !}
+    = appNfS T (append1subn sub X) (let e' = subNfTSubn (append1subn idSubn X) e
+      in {! e'  !} ) -- subRenCancelΓ, and one more thing
+      {! args  !}
   appNfS (cumu T) sub (cumu e) (cumu args)
     = appNf (subTypen sub T) e args
   appNfS T sub (ne x args₁) args₂ = {!   !}
@@ -345,178 +387,4 @@ We also need sub(X) = X, for X at level n+1 and sub at level n.
 
 --------------------------------------------------------------------------------
 
-PLAN: TODO:
-In several cases, there is a pattern of substituting from something that is weakened.
-Currently, we have
-Sub : Exp Γ → Exp (smaller Γ)
-
-Consider
-Sub : Exp (weakened Γ) → Exp Γ
-
-
-IDEA:
-Δ₁    Δ₂
-X ⇔  A
-Y ⇔  B
-      C
-Z ⇔  D
-      E
-
-Is a renaming Δ₁ → Δ₂ - really a WEAKENING, not a renaming
-To sub Δ₂ → Δ₁, only have to supply missing types, so C and E.
--}
-
--- DO I really need ANY weakening and not just single weakenings?
-data Weakening : ℕ → TCtx → TCtx → Set where
-  ∅ : ∀{n} → Weakening n ∅ ∅
-  same : ∀{n Δ₁ Δ₂ i} → Weakening n Δ₁ Δ₂ → Weakening n (Δ₁ , i) (Δ₂ , i)
-  skip : ∀{n Δ₁ Δ₂} → Weakening n Δ₁ Δ₂ → Weakening n Δ₁ (Δ₂ , n)
-
-data TSub3 : ∀{n Δ₁ Δ₂} → Weakening n Δ₂ Δ₁ → Set where
-  ∅ : ∀{n} → TSub3 {n} ∅
-  same : ∀{n Δ₁ Δ₂ i wea} → TSub3 {n} {Δ₁} {Δ₂} wea → TSub3 (same {_} {_} {_} {i} wea)
-  skip : ∀{n Δ₁ Δ₂ wea} → TSub3 {n} {Δ₁} {Δ₂} wea
-    → Type n Δ₂ → TSub3 (skip wea)
-
-data Ctx' : TCtx → Set where
-  ∅ : Ctx' ∅
-  _,_ : ∀{n Δ} → Ctx' Δ → Type n Δ → Ctx' Δ
-  lift : ∀{Δ n} → Ctx' Δ → Ctx' (Δ , n)
-
--- TODO: whenever I look at this: think about if Ctx' could actually solve issue.
--- The idea is that lift constructor is used in Nf definition in place of
--- weakening the context with a function. Then this somehow makes types work out
--- in subNf later. Note that this also makes contexts so that they can store
--- types in weaker Δs in them. This plan smells fishy because in dep. thy.
--- it makes no sense, there is only one context, and each thing in it has context
--- everything previous to it. Maybe this actually makes it more similar to dep thy?
--- Maybe consider combining contexts?
-weakenΓ' : ∀{Δ Δ' n} → Weakening n Δ Δ'
-  → Ctx' Δ → Ctx' Δ'
-weakenΓ' (same wea) (lift Γ) = lift (weakenΓ' wea Γ)
-weakenΓ' ∅ ∅ = ∅
-weakenΓ' (skip wea) ∅ = {! skip (weakenΓ' wea ∅)  !}
-weakenΓ' wea (Γ , x) = {!   !}
-weakenΓ' wea (lift Γ) = {!   !}
-
-idWea : ∀{n Δ} → Weakening n Δ Δ
-idWea {n} {∅} = ∅
-idWea {n} {Δ , T} = same idWea
-
-idSub3 : ∀{n Δ} → TSub3 {n} {Δ} idWea
-idSub3 {n} {∅} = ∅
-idSub3 {n} {Δ , T} = same idSub3
-
-applySub3 : ∀{n m Δ₁ Δ₂} → (wea : Weakening n Δ₂ Δ₁) → TSub3 wea → InTCtx Δ₁ m → Type m Δ₂
-applySub3 .(same _) (same sub) same = Var same
-applySub3 .(same _) (same sub) (next x) = renType weaken1Δ (applySub3 _ sub x)
-applySub3 {n} {m} {Δ₁} {Δ₂} .(skip _) (skip sub T) same = T
-applySub3 .(skip _) (skip sub T) (next x) = applySub3 _ sub x
-
-subType3 : ∀{n Δ Δ' m} → (wea : Weakening n Δ Δ') → (sub : TSub3 wea)
- → Type m Δ' → Type m Δ
-subType3 wea sub (Var x) = applySub3 wea sub x
-subType3 wea sub (A ⇒ B) = subType3 wea sub A ⇒ subType3 wea sub B
-subType3 wea sub (⋁ T) = ⋁ (subType3 (same wea) (same sub) T)
-subType3 wea sub (cumu T) = cumu (subType3 wea sub T)
-
-subΓ3 : ∀{n Δ Δ'} → (wea : Weakening n Δ Δ') → (sub : TSub3 wea)
- → Ctx Δ' → Ctx Δ
-subΓ3 wea sub ∅ = ∅
-subΓ3 wea sub (Γ , T) = subΓ3 wea sub Γ , subType3 wea sub T
-
-subNf3 : ∀{n Δ Δ' m Γ T} → (wea : Weakening n Δ Δ') → (sub : TSub3 wea)
- → Nf Δ' Γ T
- → Nf {m} Δ (subΓ3 _ sub Γ) (subType3 _ sub T)
-subNf3 wea sub (lambda e) = lambda (subNf3 _ sub e)
-subNf3 wea sub (Tlambda e) = Tlambda {! subNf3 (same wea) (same sub) e  !}
-subNf3 wea sub (cumu e) = {!   !}
-subNf3 wea sub (ne x args) = {!   !}
-
--- ALTERNATE IDEA:
-
-weakenType : ∀{Δ Δ' n m} → Weakening n Δ Δ'
-  → Type m Δ → Type m Δ'
-weakenType = {!   !}
-
-weakenΓ : ∀{Δ Δ' n} → Weakening n Δ Δ'
-  → Ctx Δ → Ctx Δ'
-weakenΓ = {!   !}
-
-subNf3' : ∀{n Δ Δ' m Γ T} → (wea : Weakening n Δ Δ') → (sub : TSub3 wea)
- → Nf Δ' (weakenΓ wea Γ) (weakenType wea T)
- → Nf {m} Δ Γ T
-subNf3' = {!   !}
-
--- THIS ONE IS CORRECT.
--- Need to combine with Sub as list of 1Sub, as in comment in other file.
-subNf3'' : ∀{n Δ Δ' m Γ T} → (wea : Weakening n Δ Δ') → (sub : TSub3 wea)
- → Nf Δ' (weakenΓ wea Γ) T
- → Nf {m} Δ Γ (subType3 wea sub T)
-subNf3'' = {!   !}
-
-subNf3''' : ∀{n Δ Δ' m Γ} → (T : Type m (Δ' , n)) → (X : Type n Δ) → (wea : Weakening n Δ Δ')
-  → (sub : TSub3 wea)
- → Nf (Δ , n) (weakenΓ (skip idWea) Γ) (subType3 (same wea) (same sub) T)
- → Nf {m} Δ Γ (subType3 (skip wea) (skip sub X) T)
-subNf3''' T X .∅ ∅ e = {! subNf3 ...   !} -- requires (weaken idWea)
-subNf3''' T X .(same _) (same sub) e = {! weaken (subNf3''' _ sub e)  !}
-subNf3''' T X .(skip _) (skip sub x) e = {!   !}
-
-appNfS3 : ∀{n Δ Δ' Γ nOut TOut}
-  → (wea : Weakening n Δ Δ')
-  → (sub : TSub3 wea) -- from Δ' → Δ, opposite direction from weakening
-  → (T : Type (suc n) Δ')
-  → Nf {suc n} Δ Γ (subType3 wea sub T) -- (subType3 sub T)
-  → (args : Args Γ (subType3 wea sub T) nOut TOut)
-  → Nf Δ Γ TOut
-appNfS3 wea sub (Var x) e args = {!   !} -- prove that sub X = Var Y, so args = 0
-appNfS3 wea sub (A ⇒ B) (lambda e) (one args a)
-  = appNfS3 wea sub B (subNf same a e) args
-appNfS3 wea sub (⋁ T) (Tlambda e) (One X args)
-  -- = appNfS3 (skip wea) (skip sub X) T (subNf3' (skip idWea) (skip idSub3 X) {! e  !} ) {! args  !}
-  -- NOTE: constraint that appears from below line
-  -- = appNfS3 (skip wea) (skip sub X) T (subNf3'' (skip idWea) (skip idSub3 X) {! e  !}) {! args  !}
-  = appNfS3 (skip wea) (skip sub X) T
-    -- (subNf3''' T X wea sub e)
-    (subNf3''' T X wea sub {! e  !} )
-    {! args  !}
-appNfS3 wea sub (cumu T) (cumu e) (cumu args)
-  = appNf (subType3 wea sub T) e args
-appNfS3 wea sub T e none = e
-appNfS3 wea sub T (ne x args₁) args₂ = {!   !}
-
--- Then, for e case of TLambda case of appNfS, need
--- subΓ (skip idSub) (weakenΓ (skip idWeak) Γ) = Γ
--- subType (skip idSub) (subType (liftTSubn sub) T)
---    = (subTypen (append1susbn sub X) T)
-
--- idSub = same same same ..., and liftTSubn = same, append1subn = skip
---
--- IDEA: prevent ever having to use idSub and idRen by making subs and weaks
--- only one position instead of all/any.
-
-{-
- To recap for later,
-
- I had this idea about how to make the e and args args of TLambda case easier.
- Basically it boiled down to instead of appNfS being defined on ALL Δ, Δ'
- instead I define weakenings, and define it on only specifically Δ' a weakening of Δ
- Then Sub is defined in the reverse direction of weakenings.
- What remains to see if it works is to
-  -- define subNf3.
-  -- May also need to redo renamings from earlier as just simple single weakenings,
-      a. la. my original STLC by induction.
-  -- Or possibly, just make the weakenings from earlier in the file use these new weakenings.
-
-  In fact, plan for tommorow:
-  1) make new file copy
-  2) Delete old TRen, replace entirely with Weakening
-  3) See if I can get e and count cases to work in appNfS3.
-      In e case, at worst, T arg doesn't work, rest definitely do.
-  4) For count case, will need "subArgs", defined similarly on weakenings like subType3.
--}
-
-{-
-TODO: think about these things in terms of paper proof again.
 -}

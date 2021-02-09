@@ -76,8 +76,12 @@ mutual
   weakenPre (next pre) W same = same
   weakenPre (next pre) W (next prew) = next (weakenPre pre W prew)
 
+  for next time:
+  -- I think that proving these commutivity properties (or thinking of alternate
+  -- contexts which don't require them somehow)
+  -- Is the next most useful thing to do, regardless of design.
 
-  weakenCtxComm : ∀{nA n1 n2 Γ Γ₁ Γ₂} → {A : Type nA Γ}
+  weakenCtxComm : ∀{n1 n2 Γ Γ₁ Γ₂}
     → {W₁ : Type n1 Γ₁} → {W₂ : Type n2 Γ₂}
     → (pre₁ : Pre Γ₁ Γ) → (pre₂ : Pre Γ₂ Γ)
     → weakenΓ (weakenPre pre₁ W₁ pre₂) (weakenPreLeftCtxType pre₁ W₁ pre₂ W₂)

@@ -318,7 +318,7 @@ mutual
     = appNf0 B {! subNf e same a  !} count inputs
   appNf0 T (ne x) (one count) (a , inputs) = {!   !}
   appNf0 T e none tt = e
-  appNfS : ∀{n Δ Δ' Γ Tsubbed} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
+  appNfS : ∀{n Δ Δ' Γ} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
     -- → Tsubbed ≡ subTypen sub T
     → Nf {suc n} Δ Γ (subTypen sub T) -- Tsubbed
     → (count : ArgCount (subTypen sub T)) -- Tsubbed)
