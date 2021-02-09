@@ -263,6 +263,7 @@ subNfTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m
 subNfTSubn sub (lambda e) = lambda (subNfTSubn sub e)
 subNfTSubn {_} {_} {_} {_} {Γ} sub (Tlambda e)
   = Tlambda (subst (λ Γ → Nf _ Γ _ ) (subΓcomm Γ sub) (subNfTSubn (liftTSubn sub) e))
+  -- = Tlambda {! subNfTSubn (liftTSubn sub) e  !} -- note that only Γ is a problem.
 subNfTSubn sub (cumu e) = cumu (subNfTSubn sub e)
 subNfTSubn sub (ne x args) = {!   !}
 
@@ -303,6 +304,26 @@ subRenCancelΓ : ∀{Δ n} → {X : Type n Δ} → (Γ : Ctx Δ)
     ≡ Γ
 subRenCancelΓ ∅ = refl
 subRenCancelΓ (Γ , T) = cong₂ _,_ (subRenCancelΓ Γ) (subRenCancelType [] T)
+
+bigLemmaApply : ∀{Δ Δ' n m} → (l : List ℕ) → (sub : TSubn n Δ' Δ)
+  → (x : InTCtx (appendMany (Δ' , n) l) m) → {X : Type n Δ}
+  → (subTypen (liftManySub l (append1subn idSubn X)) (applySub (liftManySub l (liftTSubn sub)) x))
+    ≡ (applySub (liftManySub l (append1subn sub X)) x)
+bigLemmaApply [] ∅ same = refl
+bigLemmaApply (x₁ ∷ l) ∅ same = refl
+bigLemmaApply (x₁ ∷ l) ∅ (next x) = {! bigLemmaApply  !}
+bigLemmaApply l (nextn sub x₁) x = {! x  !}
+bigLemmaApply l (nextm sub) x = {! x  !}
+
+bigLemma : ∀{Δ Δ' n m} → {sub : TSubn n Δ' Δ} → (l : List ℕ)
+  → (T : Type m (appendMany (Δ' , n) l)) → {X : Type n Δ}
+  → (subTypen (liftManySub l (append1subn idSubn X)) (subTypen (liftManySub l (liftTSubn sub)) T))
+    ≡ (subTypen (liftManySub l (append1subn sub X)) T)
+bigLemma l (Var x) = {!   !}
+bigLemma l (A ⇒ B) = cong₂ _⇒_ (bigLemma l A) (bigLemma l B)
+bigLemma l (⋁ T) = cong ⋁ (bigLemma (_ ∷ l) T)
+bigLemma l (cumu T) = cong cumu (bigLemma l T)
+
 
 mutual
   subNf : ∀{n n' Δ Γ T T'} → (x : InCtx Γ T)

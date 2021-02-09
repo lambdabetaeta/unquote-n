@@ -120,25 +120,55 @@ id = Tlambda (Tlambda (lambda (lambda (app (weakenΓ EndCtx) EndCtx))))
 
 -- On the other hand, could reintroduce InCtx (not InTCtx) if I wanted, as weakenΓ
 -- isn't part of that story.
-{-
 
 
 mutual
-  data Nf : ∀{n} → (Δ : TCtx) → Ctx Δ → Type n Δ → Set where
+  data Nf : ∀{n} → (Δ : TCtx) → Ctx → Type n Δ → Set where
     lambda : ∀{n Δ Γ A B} → Nf {n} Δ (Γ , A) B → Nf Δ Γ (A ⇒ B)
     Tlambda : ∀{Δ n Γ T}
-      → Nf (Δ , n) (renΓ weaken1Δ Γ) T → Nf Δ Γ (⋁ T)
-    -- ne : ∀{n Δ Γ T} → Ne {n} Δ Γ T → Nf Δ Γ T
+      → Nf (Δ , n) Γ T → Nf Δ Γ (⋁ T)
+    -- TODO: are these at all necessary?
     cumu : ∀{Δ n T Γ}
       → Nf {n} Δ Γ T
       → Nf {suc n} Δ Γ (cumu T)
+    weakenΔ : ∀{n Δ Γ T m} → Nf {n} Δ Γ T → Nf {n} (Δ , m) Γ (weakenΔ T)
+    -- weakenΓ : ∀{n Δ Γ T nA ΔA} → {A : Type nA ΔA} → Nf {n} Δ Γ T → Nf Δ (Γ , A) T
     ne : ∀{n Δ Γ T nOut TOut}
-      → (x : InCtx {n} Γ T)
+      -- → (x : InCtx {n} Γ T)
+      → (x : Var {n} Δ Γ T)
       → (args : Args Γ T nOut TOut)
       → Nf Δ Γ TOut
 
+
+  -- Just an idea...
+  data Ne : ∀{n} → (Δ : TCtx) → Ctx → Type n Δ → Set where
+    app : ∀{n Δ Γ A B} → Ne {n} Δ Γ (A ⇒ B) → Nf Δ Γ A → Ne Δ Γ B
+    EndCtx : ∀{n Δ Γ T} → Ne {n} Δ (Γ , T) T
+    -- then maybe don't have these in Nf? or it doesn't matter?
+    -- normal forms alreads not unique because cumu, weakenΔ, and weakenΓ can be used in any order.
+    cumu : ∀{Δ n T Γ}
+      → Ne {n} Δ Γ T
+      → Ne {suc n} Δ Γ (cumu T)
+    weakenΔ : ∀{n Δ Γ T m} → Ne {n} Δ Γ T → Ne {n} (Δ , m) Γ (weakenΔ T)
+    weakenΓ : ∀{n Δ Γ T nA ΔA} → {A : Type nA ΔA} → Ne {n} Δ Γ T → Ne Δ (Γ , A) T
+
+  -- Another idea...
+  data Var : ∀{n} → (Δ : TCtx) → Ctx → Type n Δ → Set where
+    EndCtx : ∀{n Δ Γ T} → Var {n} Δ (Γ , T) T
+    cumu : ∀{Δ n T Γ}
+      → Var {n} Δ Γ T
+      → Var {suc n} Δ Γ (cumu T)
+    weakenΔ : ∀{n Δ Γ T m} → Var {n} Δ Γ T → Var {n} (Δ , m) Γ (weakenΔ T)
+    weakenΓ : ∀{n Δ Γ T nA ΔA} → {A : Type nA ΔA} → Var {n} Δ Γ T → Var Δ (Γ , A) T
+
+  subCtxVar : ∀{n Δ Γ T} → (x : Var {n} Δ Γ T) → Ctx
+  subCtxVar (EndCtx {_} {_} {Γ}) = Γ
+  subCtxVar (cumu x) = subCtxVar x
+  subCtxVar (weakenΔ x) = subCtxVar x
+  subCtxVar (weakenΓ {_} {_} {_} {_} {_} {_} {A} x) = subCtxVar x , A
+
 --                              T         ↓ outputN    ↓ output type
-  data Args : ∀{n Δ} → Ctx Δ → Type n Δ → (nOut : ℕ) → Type nOut Δ  → Set where
+  data Args : ∀{n Δ} → Ctx → Type n Δ → (nOut : ℕ) → Type nOut Δ  → Set where
     none : ∀{n Δ Γ T} → Args {n} {Δ} Γ T n T
     one : ∀{n Δ Γ A B nOut TOut} → Args Γ B nOut TOut
       → Nf Δ Γ A
@@ -146,55 +176,72 @@ mutual
     One : ∀{n Δ Γ nOut TOut} → {T : Type (suc n) (Δ , n)} → (X : Type n Δ)
       → Args {suc n} {Δ} Γ (subTypen (append1subn idSubn X) T) nOut TOut
       → Args {suc n} {Δ} Γ (⋁ T) nOut TOut
-
     cumu : ∀{n Δ Γ T nOut TOut}
       → Args {n} {Δ} Γ T nOut TOut → Args {suc n} Γ (cumu T) nOut TOut
-
-idSubnApplyFact : ∀{n m Δ x} → Var x ≡ applySub {n} {m} (idSubn {n} {Δ}) x
-idSubnApplyFact {_} {_} {_} {same} = refl
-idSubnApplyFact {_} {_} {_} {next x} = cong (renType weaken1Δ) idSubnApplyFact
+    weakenΔ : ∀{n Δ Γ T nOut TOut m}
+      → Args {n} {Δ} Γ T nOut TOut → Args {n} {Δ , m} Γ (weakenΔ T) nOut (weakenΔ TOut)
+      -- TODO TODO TODO should TOut be in its own Δ?
+      -- TODO: does weakenΓ need to exist?
+    -- weakenΓ : ∀{n Δ Γ T nA ΔA nOut TOut} → {A : Type nA ΔA}
+      -- → Args {n} {Δ} Γ T nOut TOut → Args {n} {Δ} (Γ , A) T nOut TOut
 
 idSubnFact : ∀{n m Δ T} → T ≡ subTypen {n} {m} {Δ} {Δ} idSubn T
-idSubnFact {_} {_} {_} {Var x} = idSubnApplyFact
 idSubnFact {_} {_} {_} {A ⇒ B} = cong₂ _⇒_ idSubnFact idSubnFact
 idSubnFact {_} {_} {_} {⋁ T} = cong ⋁ idSubnFact -- NOTE: the implementation of TSub is key here, as liftTSub idSub = idSub DEFINITIONALLY
 idSubnFact {_} {_} {_} {cumu T} = cong cumu idSubnFact
+idSubnFact {_} {_} {_} {EndCtx} = refl
+idSubnFact {_} {_} {_} {weakenΔ T} = cong weakenΔ idSubnFact
 
-idSubnΓFact : ∀{n Δ Γ} → Γ ≡ subΓn {n} {Δ} idSubn Γ
-idSubnΓFact {_} {_} {∅} = refl
-idSubnΓFact {_} {_} {Γ , T} = cong₂ _,_ idSubnΓFact idSubnFact
+-- subΓn : ∀{n Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Ctx → Ctx
+-- subΓn sub ∅ = ∅
+-- subΓn sub (Γ , T) = subΓn sub Γ , subTypen sub T
+
+-- NOTE: when doing these subs in practice below, Γ never actually
+-- had anything to be subbed, it was just weaken (sub Γ) ≡ Γ
+-- so the fact that we won't/can't operate on Γ makes sense?
+
+-- subNfTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m} Δ₁ Γ T
+  -- → Nf {m} Δ₂ (subΓn sub Γ) (subTypen sub T)
+-- subNfTSubn sub (lambda e) = lambda (subNfTSubn sub e)
+-- subNfTSubn {_} {_} {_} {_} {Γ} sub (Tlambda e)
+--   = Tlambda (subst (λ Γ → Nf _ Γ _ ) (subΓcomm Γ sub) (subNfTSubn (liftTSubn sub) e))
+-- subNfTSubn sub (cumu e) = cumu (subNfTSubn sub e)
+-- subNfTSubn sub (ne x args) = {!   !}
 
 mutual
-  subNf : ∀{n n' Δ Γ T T'} → (x : InCtx Γ T)
-    → (toSub : Nf {n} Δ (subCtx x) T)
-    → Nf {n'} Δ Γ T' → Nf Δ (subCtx x) T'
-  subNf x toSub (lambda e) = lambda (subNf (next x) {!  toSub !} e)
-  subNf x toSub (Tlambda e) = Tlambda {!   !} -- (subNf {! x  !} {! toSub  !} e)
-  subNf x toSub (ne icx args) = {!   !}
+  subNf : ∀{n n' Δ Γ T T'} → (x : Var Δ Γ T) -- TODO really same Δ?
+    → (toSub : Nf {n} Δ (subCtxVar x) T)
+    → Nf {n'} Δ Γ T' → Nf Δ (subCtxVar x) T'
+  subNf x toSub (lambda e) = lambda (subNf (weakenΓ x) {! toSub  !} e)-- I really feel like due to subCtxVar, this shouldn't be necessary....
+  subNf x toSub (Tlambda e) = Tlambda (subNf (weakenΔ x) (weakenΔ toSub) e)
   subNf x toSub (cumu e) = cumu (subNf x toSub e)
+  subNf EndCtx toSub (weakenΔ e) = {!   !}
+  subNf (cumu x) toSub (weakenΔ e) = {!   !}
+  subNf (weakenΔ x) (weakenΔ toSub) (weakenΔ e) = weakenΔ (subNf x toSub e)
+  subNf (weakenΔ x) (ne x₁ args) (weakenΔ e) = {! x₁  !}
+  subNf (weakenΓ x) toSub (weakenΔ e) = {!   !}
+  subNf x toSub (ne x₁ args) = {!   !}
   appNf0 : ∀{Δ  Γ nOut TOut} → (T : Type 0 Δ)
     → Nf {0} Δ Γ T
-    → (count : Args Γ T nOut TOut)
+    → (args : Args Γ T nOut TOut)
     → Nf Δ Γ TOut
-  appNf0 (A ⇒ B) (lambda e) (one args a)
-    = appNf0 B (subNf same a e) args
-  appNf0 T (ne x args₁) (one a args₂) = {!   !}
+  appNf0 (A ⇒ B) (lambda e) (one args e') = appNf0 B (subNf EndCtx e' e) args
+  appNf0 T (ne x args₁) args₂ = {!   !}
+  appNf0 (weakenΔ T) (weakenΔ x) (weakenΔ args) = weakenΔ (appNf0 T x args)
   appNf0 T e none = e
   appNfS : ∀{n Δ Δ' Γ nOut TOut} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
     → Nf {suc n} Δ Γ (subTypen sub T) -- Tsubbed
     → (args : Args Γ (subTypen sub T) nOut TOut) -- Tsubbed)
     → Nf Δ Γ TOut
-    -- crucial idea: we are doing induction on T, not e.
-
-  appNfS (Var X) sub e args = {!   !} -- really just have to prove sub X = X, so args = 0.
-  appNfS (A ⇒ B) sub (lambda e) (one args a)
-    = appNfS B sub (subNf same a e) args
+  --   -- crucial idea: we are doing induction on T, not e.
+  appNfS EndCtx sub e args = {! args  !} -- prove sub X = Y, so therefore args is none because levels dont match.
+  appNfS (A ⇒ B) sub (lambda e) (one args e')
+    = appNfS B sub (subNf EndCtx e' e) args
   appNfS (⋁ T) sub (Tlambda e) (One X args)
-    = appNfS T (append1subn sub X) (let e' = subNfTSubn (append1subn idSubn X) e
-      in {! e'  !} ) -- subRenCancelΓ, and one more thing
-      {! args  !}
+    = appNfS T (append1subn sub X) {! subNfTSubn   !} {! args  !}
   appNfS (cumu T) sub (cumu e) (cumu args)
     = appNf (subTypen sub T) e args
+  appNfS (weakenΔ T) sub e args = {!   !}
   appNfS T sub (ne x args₁) args₂ = {!   !}
   appNfS T sub e none = e
 
@@ -202,9 +249,40 @@ mutual
     → Nf {n} Δ Γ T
     → (args : Args Γ T nOut TOut)
     → Nf Δ Γ TOut
-  appNf {zero} = appNf0
-  appNf {suc n} {Δ} {Γ} {nOut} {TOut} T e args
-    = appNfS T idSubn
-      (subst (λ T → Nf _ _ T) idSubnFact e)
-      (subst (λ T → Args Γ T nOut TOut) idSubnFact args)
+  appNf = {!   !}
+  -- appNf {zero} = appNf0
+  -- appNf {suc n} {Δ} {Γ} {nOut} {TOut} T e args
+  --   = appNfS T idSubn
+  --     (subst (λ T → Nf _ _ T) idSubnFact e)
+  --     (subst (λ T → Args Γ T nOut TOut) idSubnFact args)
+
+
+
+{-
+
+In this file, I make two changes from normal. I have weaken and EndCtx instead
+of variables, and I don't have Γ parametrized by Δ.
+
+The second choice requires weakenΔ in Exp (or at least in Var/InCtx), as noted above.
+
+-}
+
+
+{-
+
+Current thoughts:
+Its unclear how to deal with different combinations of weakenΔ and weakenΓ in the
+cases of subNf and appNf. Unless I can figure it out, try this next:
+
+New file, Γ has no parameters, but make Var and TVar types with
+weaken and EndCtx constructors. Might even need to split further to fix orderings of
+weakenΔ and weakenΓ. Could also put cumu in there, but I think technically unecessary
+
+Or I use regular InCtx, but put weakenΔ in Nf? Check above to see if this works...
+
+
+In fact, looking at "System-F-ugly-but-get-it-done.agda", almost all of the lemmas go
+away simply by making Γ not parametrized by Δ. The only one that remains is
+bigLemma, of which the only part that is not already implemented there is
+bigLemmaApply.
 -}
