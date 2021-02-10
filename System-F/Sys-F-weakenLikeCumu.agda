@@ -209,11 +209,11 @@ idSubnFact {_} {_} {_} {weakenΔ T} = cong weakenΔ idSubnFact
 -- subNfTSubn sub (ne x args) = {!   !}
 
 mutual
-  subNf : ∀{n n' Δ Γ T T'} → (x : Var Δ Γ T) -- TODO really same Δ?
-    → (toSub : Nf {n} Δ (subCtxVar x) T)
+  subNf : ∀{n n' Δ Δx Γ T T'} → (x : Var Δx Γ T) -- TODO really same Δ?
+    → (toSub : Nf {n} Δx (subCtxVar x) T)
     → Nf {n'} Δ Γ T' → Nf Δ (subCtxVar x) T'
   subNf x toSub (lambda e) = lambda (subNf (weakenΓ x) {! toSub  !} e)-- I really feel like due to subCtxVar, this shouldn't be necessary....
-  subNf x toSub (Tlambda e) = Tlambda (subNf (weakenΔ x) (weakenΔ toSub) e)
+  subNf {n} x toSub (Tlambda {_} {m} e) = Tlambda (subNf (weakenΔ {_} {_} {_} {_} {m} x) (weakenΔ toSub) e)
   subNf x toSub (cumu e) = cumu (subNf x toSub e)
   subNf EndCtx toSub (weakenΔ e) = {!   !}
   subNf (cumu x) toSub (weakenΔ e) = {!   !}
