@@ -94,9 +94,12 @@ data Pre : ∀{Δ} → Ctx Δ → Set where
   same : ∀{Δ Γ} → Pre {Δ} Γ
   next : ∀{Δ Γ n} → {T : Type n Δ} → Pre {Δ} Γ → Pre (Γ , T)
 
+data SameTypes : ∀{nA nB Δ} → Type nA Δ → Type nB Δ → Set where
+  refl : ∀{n Δ} → {T : Type n Δ} → SameTypes T T
+
 -- nothing means use toSub, just means just adjust x for new context.
-varSub : ∀{Δ Γ n A B} → (icx : InCtx {n} {Δ} Γ A)
-  → (x : InCtx Γ B) → (B ≡ A) ⊎ (InCtx (subCtx icx) B)
+varSub : ∀{Δ Γ n m A B} → (icx : InCtx {n} {Δ} Γ A)
+  → (x : InCtx {m} Γ B) → (SameTypes B A) ⊎ (InCtx (subCtx icx) B)
 varSub same same = inj₁ refl
 varSub same (next x) = inj₂ x
 varSub (next icx) same = inj₂ same
@@ -114,8 +117,6 @@ test = Relation.Nullary.yes 5
 data TSubn : ℕ → TCtx → TCtx → Set where
   ∅ : ∀{n} → TSubn n ∅ ∅
   nextn : ∀{n Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type n Δ₂ → TSubn n (Δ₁ , n) Δ₂
-  -- nextm : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → InTCtx Δ₂ m → TSubn n (Δ₁ , m) Δ₂
-  -- TODO: think later about old vs new design here. Which makes things more definitionally true?
   nextm : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → TSubn n (Δ₁ , m) (Δ₂ , m)
 
 -- weaken1Sub : ∀{n l Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → TSubn n Δ₁ (Δ₂ , l)
@@ -194,6 +195,13 @@ mutual
     cumu : ∀{n Δ Γ T nOut TOut}
       → Args {n} {Δ} Γ T nOut TOut → Args {suc n} Γ (cumu T) nOut TOut
 
+joinArgs : ∀{n Δ Γ A m B l C}
+  → Args {n} {Δ} Γ A m B → Args Γ B l C → Args Γ A _ C
+joinArgs none args₂ = args₂
+joinArgs (one args₁ e) args₂ = one (joinArgs args₁ args₂) e
+joinArgs (One X args₁) args₂ = One X (joinArgs args₁ args₂)
+joinArgs (cumu args₁) args₂ = cumu (joinArgs args₁ args₂)
+
 idSubnApplyFact : ∀{n m Δ x} → Var x ≡ applySub {n} {m} (idSubn {n} {Δ}) x
 idSubnApplyFact {_} {_} {_} {same} = refl
 idSubnApplyFact {_} {_} {_} {next x} = cong (renType weaken1Δ) idSubnApplyFact
@@ -258,15 +266,6 @@ subΓcomm : ∀{n m Δ₁ Δ₂} → (Γ : Ctx Δ₁) → (sub : TSubn n Δ₁ �
 subΓcomm ∅ sub = refl
 subΓcomm (Γ , T) sub = cong₂ _,_ (subΓcomm Γ sub) (subTypecomm [] T sub)
 
-subNfTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m} Δ₁ Γ T
-  → Nf {m} Δ₂ (subΓn sub Γ) (subTypen sub T)
-subNfTSubn sub (lambda e) = lambda (subNfTSubn sub e)
-subNfTSubn {_} {_} {_} {_} {Γ} sub (Tlambda e)
-  = Tlambda (subst (λ Γ → Nf _ Γ _ ) (subΓcomm Γ sub) (subNfTSubn (liftTSubn sub) e))
-  -- = Tlambda {! subNfTSubn (liftTSubn sub) e  !} -- note that only Γ is a problem.
-subNfTSubn sub (cumu e) = cumu (subNfTSubn sub e)
-subNfTSubn sub (ne x args) = {!   !}
-
 liftCommType : ∀{Δ₁ Δ₂ n m} → (l : List ℕ) → {ren : TRen Δ₁ Δ₂}
   → (T : Type m (appendMany Δ₁ l))
   → renType (liftManyRen l (liftTRen {_} {_} {n} ren)) (renType (liftManyRen l weaken1Δ) T)
@@ -282,6 +281,10 @@ liftCommΓ : ∀{Δ₁ Δ₂ n} → {ren : TRen Δ₁ Δ₂} → (Γ : Ctx Δ₁
 liftCommΓ ∅ = refl
 liftCommΓ (Γ , T) = cong₂ _,_ (liftCommΓ Γ) (liftCommType [] T)
 
+renICX : ∀{n Δ₁ Δ₂ Γ T} → (ren : TRen Δ₁ Δ₂)
+  → InCtx {n} {Δ₁} Γ T → InCtx (renΓ ren Γ) (renType ren T)
+renICX ren same = same
+renICX ren (next x) = next (renICX ren x)
 -- TODO: Do I need this? (and therefore liftCommType and liftCommΓ as well?)
 renNf : ∀{n Δ₁ Δ₂ Γ T} → (ren : TRen Δ₁ Δ₂)
   → Nf {n} Δ₁ Γ T → Nf Δ₂ (renΓ ren Γ) (renType ren T)
@@ -305,58 +308,109 @@ subRenCancelΓ : ∀{Δ n} → {X : Type n Δ} → (Γ : Ctx Δ)
 subRenCancelΓ ∅ = refl
 subRenCancelΓ (Γ , T) = cong₂ _,_ (subRenCancelΓ Γ) (subRenCancelType [] T)
 
+  -- → (subTypen (append1subn idSubn X) (applySub (liftTSubn sub) x))
+    -- ≡ (applySub (append1subn sub X) x)
 bigLemmaApply : ∀{Δ Δ' n m} → (l : List ℕ) → (sub : TSubn n Δ' Δ)
   → (x : InTCtx (appendMany (Δ' , n) l) m) → {X : Type n Δ}
   → (subTypen (liftManySub l (append1subn idSubn X)) (applySub (liftManySub l (liftTSubn sub)) x))
     ≡ (applySub (liftManySub l (append1subn sub X)) x)
 bigLemmaApply [] ∅ same = refl
 bigLemmaApply (x₁ ∷ l) ∅ same = refl
-bigLemmaApply (x₁ ∷ l) ∅ (next x) = {! bigLemmaApply  !}
+bigLemmaApply (x₁ ∷ l) ∅ (next x) = {!   !}
 bigLemmaApply l (nextn sub x₁) x = {! x  !}
 bigLemmaApply l (nextm sub) x = {! x  !}
 
+  -- → (subTypen (append1subn idSubn X) (subTypen (liftTSubn sub) T))
+    -- ≡ (subTypen (append1subn sub X) T)
 bigLemma : ∀{Δ Δ' n m} → {sub : TSubn n Δ' Δ} → (l : List ℕ)
   → (T : Type m (appendMany (Δ' , n) l)) → {X : Type n Δ}
   → (subTypen (liftManySub l (append1subn idSubn X)) (subTypen (liftManySub l (liftTSubn sub)) T))
     ≡ (subTypen (liftManySub l (append1subn sub X)) T)
-bigLemma l (Var x) = {!   !}
+bigLemma l (Var x) = bigLemmaApply l _ x
 bigLemma l (A ⇒ B) = cong₂ _⇒_ (bigLemma l A) (bigLemma l B)
 bigLemma l (⋁ T) = cong ⋁ (bigLemma (_ ∷ l) T)
 bigLemma l (cumu T) = cong cumu (bigLemma l T)
 
+bigLemma' : ∀{Δ Δ' n m} → {sub : TSubn n Δ' Δ}
+  → (T : Type m (Δ' , n)) → {X : Type n Δ}
+  → (subTypen (append1subn idSubn X) (subTypen (liftTSubn sub) T))
+    ≡ (subTypen (append1subn sub X) T)
+bigLemma' (Var x) = {!   !}
+bigLemma' (A ⇒ B) = cong₂ _⇒_ (bigLemma' A) (bigLemma' B)
+bigLemma' (⋁ T) = cong ⋁ {! bigLemma' T  !}
+bigLemma' (cumu T) = cong cumu (bigLemma' T)
+
+subICXTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂)
+  → InCtx {m} {Δ₁} Γ T
+  → InCtx {m} (subΓn sub Γ) (subTypen sub T)
+subICXTSubn sub same = same
+subICXTSubn sub (next x) = next (subICXTSubn sub x)
 
 mutual
-  subNf : ∀{n n' Δ Γ T T'} → (x : InCtx Γ T)
-    → (toSub : Nf {n} Δ (subCtx x) T)
+  subNfTSubn : ∀{n m Δ₁ Δ₂ Γ T} → (sub : TSubn n Δ₁ Δ₂) → Nf {m} Δ₁ Γ T
+    → Nf {m} Δ₂ (subΓn sub Γ) (subTypen sub T)
+  subNfTSubn sub (lambda e) = lambda (subNfTSubn sub e)
+  subNfTSubn {_} {_} {_} {_} {Γ} sub (Tlambda e)
+    = Tlambda (subst (λ Γ → Nf _ Γ _ ) (subΓcomm Γ sub) (subNfTSubn (liftTSubn sub) e))
+    -- = Tlambda {! subNfTSubn (liftTSubn sub) e  !} -- note that only Γ is a problem.
+  subNfTSubn sub (cumu e) = cumu (subNfTSubn sub e)
+  subNfTSubn sub (ne x args) = ne (subICXTSubn sub x) (subArgsTSubn sub args)
+
+  subArgsTSubn : ∀{n m Δ₁ Δ₂ Γ T nOut TOut} → (sub : TSubn n Δ₁ Δ₂)
+    → Args {m} {Δ₁} Γ T nOut TOut
+    → Args (subΓn sub Γ) (subTypen sub T) nOut (subTypen sub TOut)
+  subArgsTSubn sub none = none
+  subArgsTSubn sub (one args e) = one (subArgsTSubn sub args) (subNfTSubn sub e)
+  subArgsTSubn {_} {_} {_} {_} {_} {⋁ T} sub (One X args)
+    = One (subTypen sub X) (subst (λ T → Args _ T _ _)
+      {! trans ? (sym (bigLemma {_} {_} {_} {_} {_} [] T {X})) !} (subArgsTSubn sub args))
+    -- I think this is two successive applications of bigLemma?
+    -- = One (subTypen sub X) (subArgsTSubn {!   !} ?)
+    -- = {!   !}
+  subArgsTSubn sub (cumu args) = cumu (subArgsTSubn sub args)
+
+mutual
+  subNf0 : ∀{n' Δ Γ T'} → (T : Type 0 Δ) → (x : InCtx Γ T)
+    → (toSub : Nf {0} Δ (subCtx x) T)
     → Nf {n'} Δ Γ T' → Nf Δ (subCtx x) T'
-  subNf x toSub (lambda e) = lambda (subNf (next x) {!  toSub !} e)
-  subNf x toSub (Tlambda e) = Tlambda {!   !} -- (subNf {! x  !} {! toSub  !} e)
-  subNf x toSub (ne icx args) = {!   !}
-  subNf x toSub (cumu e) = cumu (subNf x toSub e)
+  subNf0 T x toSub (lambda e) = lambda (subNf0 T (next x) {!  toSub !} e)
+  subNf0 T x toSub (Tlambda e)
+    -- = Tlambda (subNf0 (renType weaken1Δ T) (renICX weaken1Δ x) (renNf weaken1Δ toSub) e)
+    = Tlambda {! (subNf0 (renType weaken1Δ T) ? (renNf weaken1Δ toSub) e)  !}
+  subNf0 T x toSub (cumu e) = cumu (subNf0 T x toSub e)
+  subNf0 T x toSub (ne y args) with varSub x y
+  ... | inj₁ refl = appNf0 T toSub (subArgs0 T x toSub args)
+  ... | inj₂ y' = ne y' (subArgs0 T x toSub args)
+
+  subArgs0 : ∀{n' l Δ Γ T' T₁} → (T : Type 0 Δ) → (x : InCtx Γ T)
+    → (toSub : Nf {0} Δ (subCtx x) T)
+    → Args {l} {Δ} Γ T₁ n' T' → Args (subCtx x) T₁ n' T'
+  subArgs0 T x toSub none = none
+  subArgs0 T x toSub (one args e) = one (subArgs0 T x toSub args) (subNf0 T x toSub e)
+  subArgs0 T x toSub (One X args) = One X (subArgs0 T x toSub args)
+  subArgs0 T x toSub (cumu args) = cumu (subArgs0 T x toSub args)
+
   appNf0 : ∀{Δ  Γ nOut TOut} → (T : Type 0 Δ)
     → Nf {0} Δ Γ T
     → (count : Args Γ T nOut TOut)
     → Nf Δ Γ TOut
   appNf0 (A ⇒ B) (lambda e) (one args a)
-    = appNf0 B (subNf same a e) args
-  appNf0 T (ne x args₁) (one a args₂) = {!   !}
+    = appNf0 B (subNf0 A same a e) args
+  appNf0 T (ne x args₁) args₂ = ne x (joinArgs args₁ args₂)
   appNf0 T e none = e
+
   appNfS : ∀{n Δ Δ' Γ nOut TOut} → (T : Type (suc n) Δ') → (sub : TSubn n Δ' Δ)
     → Nf {suc n} Δ Γ (subTypen sub T) -- Tsubbed
     → (args : Args Γ (subTypen sub T) nOut TOut) -- Tsubbed)
     → Nf Δ Γ TOut
     -- crucial idea: we are doing induction on T, not e.
-
   appNfS (Var X) sub e args = {!   !} -- really just have to prove sub X = X, so args = 0.
   appNfS (A ⇒ B) sub (lambda e) (one args a)
-    = appNfS B sub (subNf same a e) args
-  appNfS (⋁ T) sub (Tlambda e) (One X args)
-    = appNfS T (append1subn sub X) (let e' = subNfTSubn (append1subn idSubn X) e
-      in {! e'  !} ) -- subRenCancelΓ, and one more thing
-      {! args  !}
+    = appNfS B sub {!   !} args
+  appNfS (⋁ T) sub (Tlambda e) (One X args) = {!   !}
   appNfS (cumu T) sub (cumu e) (cumu args)
     = appNf (subTypen sub T) e args
-  appNfS T sub (ne x args₁) args₂ = {!   !}
+  appNfS T sub (ne x args₁) args₂ = ne x (joinArgs args₁ args₂)
   appNfS T sub e none = e
 
   appNf : ∀{n Δ Γ nOut TOut} → (T : Type n Δ)
@@ -369,9 +423,36 @@ mutual
       (subst (λ T → Nf _ _ T) idSubnFact e)
       (subst (λ T → Args Γ T nOut TOut) idSubnFact args)
 
+-- data TSubn : ℕ → TCtx → TCtx → Set where
+--   ∅ : ∀{n} → TSubn n ∅ ∅
+--   nextn : ∀{n Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type n Δ₂ → TSubn n (Δ₁ , n) Δ₂
+--   nextm : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → TSubn n (Δ₁ , m) (Δ₂ , m)
+
+-- (sub ⊎ [X ↦ B])T
+-- [X ↦ B]sub(T)
+
+data 1TSub : ℕ → TCtx → TCtx → Set where
+
+data TSubn2 : ℕ → TCtx → TCtx → Set where
+  idSub2 : ∀{n Δ} → TSubn2 n Δ Δ
+  cons : ∀{n Δ₁ Δ₂ Δ₃} → TSubn2 n Δ₁ Δ₂ → 1TSub n Δ₂ Δ₃ → TSubn2 n Δ₁ Δ₃
+
+mutual
+  subTypeHor : ∀{n m Δ₁ Δ₂} → TSubn n Δ₁ Δ₂ → Type m Δ₁ → Type m Δ₂
+  subTypeHor ∅ T = {!   !}
+  subTypeHor (nextn sub X) T = {! subTypeHor (nextm sub) T  !}
+  subTypeHor (nextm sub) T = {!   !}
+
+  subTypeVer : ∀{n m Δ₁ Δ₂} → TSubn2 n Δ₁ Δ₂ → Type m Δ₁ → Type m Δ₂
+  subTypeVer idSub2 T = {!   !}
+
 {-
 -------------------------------------------------------------------------------
   "PAPER" PROOF:
+
+  for all levels n, for all types T, (e : T)
+  1) can be applied to any num of args
+  2) can be substituted into any other expression
 
   If n = 0, then proof from S.T.L.C suffices, as no ∀ types.
   For all level n ≥ 1, for all typos (T , sub) where sub has vars at
@@ -384,13 +465,15 @@ mutual
   For the former, cases on T:
   -- T = A ⇒ B. So, sub(T) = sub(A) ⇒ sub(B)
     then e = λ x . e' : sub(A) ⇒ sub(B)
-    e₁ : A. Recurse with (n, A, sub, e₁) to get e'[x ↦ e₁] : B.
+    e₁ : sub(A). Recurse with (n, A, sub, e₁) to get e'[x ↦ e₁] : B.
     Next, recurse with (n, B, sub, e'[x ↦ e₁]) to apply rest of args.
   -- T = ∀ X . A.   So, sub(T) = ∀ X . sub(A)
+    e : sub(T)
     then e = Λ X . e'  : ∀ X . sub(A)
-    so e' : sub(A), so [X ↦ A]e : (sub ⊎ [X ↦ A])T       THIS JUDGEMENT HERE IS WHATS HARD
-    e₁ = A is a type.
-    recurse on (n, A, sub ⊎ [X ↦ A] , [X ↦ A]e') to apply rest of args.
+    so e' : sub(A), so [X ↦ B]e : (sub ⊎ [X ↦ B])T       THIS JUDGEMENT HERE IS WHATS HARD
+    definitionally, [X ↦ B]e : [X ↦ B](lift sub)(T)
+    e₁ = B is a type.
+    recurse on (n, A, sub ⊎ [X ↦ B] , [X ↦ B]e') to apply rest of args.
     NOTE: that A is at level (n-1), and so can only come up after a cumu.
     Therefore, X will be subbed for A by the time it comes up.
   -- T = X.  So sub(X) = X
@@ -408,4 +491,10 @@ We also need sub(X) = X, for X at level n+1 and sub at level n.
 
 --------------------------------------------------------------------------------
 
+-}
+
+-- TODO FOR LATER:
+
+{-
+Then, try to fill in everything EXCEPT the commutivity proofs for InCtx cases.
 -}
