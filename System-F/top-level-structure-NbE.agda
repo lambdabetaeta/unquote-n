@@ -27,6 +27,9 @@ data InTCtx : TCtx → ℕ → Set where
 TRen : TCtx → TCtx → Set
 TRen Δ₁ Δ₂ = ∀{n} → InTCtx Δ₁ n → InTCtx Δ₂ n
 
+idTRen : ∀{Δ} → TRen Δ Δ
+idTRen x = x
+
 weaken1Δ : ∀{Δ n} → TRen Δ (Δ , n)
 weaken1Δ ren = next ren
 
@@ -158,6 +161,13 @@ data Match : ∀{n Δ} → Type n Δ → TypeTLS → Set where
     → Match T T' → Match (⋁ T) (⋁ T')
   cumu : ∀{n Δ} → (T : Type n Δ) → Match (cumu T) cumu
 
+renMatch : ∀{n Δ₁ Δ₂ T T'} → (ren : TRen Δ₁ Δ₂)
+  → Match {n} {Δ₁} T T' → Match (renType ren T) T'
+renMatch ren (Var x) = Var (ren x)
+renMatch ren (mA ⇒ mB) = renMatch ren mA ⇒ renMatch ren mB
+renMatch ren (⋁ m) = ⋁ (renMatch (liftTRen ren) m)
+renMatch ren (cumu T) = cumu (renType ren T)
+
 getTLS : ∀{n Δ} → Type n Δ → TypeTLS
 getTLS (Var x) = Var
 getTLS (A ⇒ B) = getTLS A ⇒ getTLS B
@@ -211,8 +221,8 @@ lemma1 {suc n} p = lemma1 {n} (cong helper2 p)
 
 mutual
   -- by induction on first n, and then tls
-  Sem : ∀{n Δ} → (Γ : Ctx Δ) → (T : Type n Δ) → (tls : TypeTLS)
-    → Match T tls → Set
+  Sem : ∀{n Δ} → (Γ : Ctx Δ) → (T : Type n Δ) → (T' : TypeTLS)
+    → Match T T' → Set
   Sem Γ .(Var x) .Var (Var x) = Nf _ Γ (Var x)
   Sem Γ (A ⇒ B) (A' ⇒ B') (mA ⇒ mB) = GExp _ Γ A A' mA → Sem Γ B B' mB
   Sem {suc n} {Δ} Γ (⋁ T) (⋁ T') (⋁ mT)
@@ -255,7 +265,7 @@ mutual
     -- a Type n Δ.  In fact, thats what it is, just not how Var constructor of Type works.
     -- Given (X : Type n Δ), can get a sub : TSub (Δ , n) Δ
     -- g : (X : Type n Δ) → Sem Γ (T [0 / X])
-    -- SOLUTION IS putting TRen in Sub, because without rens in Sub,
+    -- SOLUTION IS putting TRen in GExp, because without rens in GExp,
     -- g outputs into Sem Δ Γ ?, which wouldn't work in lambda case either!
   reify (cumu T) g = {!   !}
 
@@ -269,3 +279,65 @@ mutual
   and in TLambda case, we append to that.
   IDEA IDEA IDEA: seems very relevant to ⋁ case of reify.
   -}
+
+mutual
+  -- by induction on first n, and then T'
+  Sem' : ∀{n Δ} → (Γ : Ctx Δ) → (T : Type n Δ) → (T' : TypeTLS)
+    → Match T T' → Set
+  Sem' Γ .(Var x) .Var (Var x) = Nf _ Γ (Var x)
+  Sem' Γ (A ⇒ B) (A' ⇒ B') (mA ⇒ mB) = GExp' _ Γ A A' mA → Sem' Γ B B' mB
+  Sem' {suc n} {Δ} Γ (⋁ T) (⋁ T') (⋁ mT)
+    = (X : Type n Δ) → Sem' Γ (subTypen (append1subn idSubn X) T) T'
+    (subMatch mT (append1subn idSubn X) lemma1)
+  Sem' Γ .(cumu T) .cumu (cumu T) = Sem' Γ T (getTLS T) (getTLSMatch T)
+
+  GExp' : ∀{n} → (Δ : TCtx) → Ctx Δ → (T : Type n Δ)
+    (T' : TypeTLS) → Match T T' → Set
+  GExp' Δ Γ T T' m = ∀{Δ' Γ'} → (tren : TRen Δ Δ') → Ren (renΓ tren Γ) Γ'
+    → Sem' {_} {Δ'} Γ' (renType tren T) T' (renMatch tren m)
+
+mutual
+  nApp' : ∀{n Δ Γ T'} → {T : Type n Δ} → (m : Match T T')
+    → Ne Δ Γ T → Sem' Γ T T' m
+    -- TODO: might want to return GExp instead!
+  nApp' (Var x) e = ne e
+  nApp' (mA ⇒ mB) e = λ g → nApp' mB (app e (reify' mA g))
+  nApp' (⋁ m) e = λ X → nApp' (subMatch m (append1subn idSubn X) lemma1) (Ne.TApp e X)
+  nApp' {_} {_} {_} {cumu} {cumu T} (cumu mT) e = nApp' (getTLSMatch T) {! e  !}
+
+  reify' : ∀{n Δ Γ T T'} → (m : Match T T') → GExp' {n} Δ Γ T T' m → Nf Δ Γ T
+  reify' (Var x) g = g idTRen {!   !} -- g idRen
+  -- reify' (A ⇒ B) g = λ x . reify' (g x)
+  -- as noted above, might want nApp' to return GExp' instead of just Sem?
+  reify' (mA ⇒ mB) g = lambda (reify' mB λ tren ren → g tren (forget1ren ren) λ tren₂ ren₂ → {! nApp' mA (var ? )  !} )
+  {-
+    POSSIBLE FIXES FOR ABOVE:
+    1) maybe nApp' returns GExp'?
+    2) Maybe we just use renMatch. Then the things are still decreasing on (n, T')
+          and use renMatch on mA.
+  -}
+    --  lambda (reify' mB λ ren → g (forget1ren ren) λ ren₂ → nApp' mA (var (ren₂ (ren same))))
+  -- reify' (∀ X . A) g = Λ X . reify' (g X)
+  reify' {suc n} {Δ} {Γ} {⋁ T} {⋁ T'} (⋁ m) g
+    = Tlambda let a = g {!   !} {! Ne.var {_} {Δ , n} same  !} in {!   !}
+  reify' (cumu T) g = {!   !}
+
+
+  {-
+  I think that this difficulty here exposes a larger problem:
+  There is no way to apply a cumu to arguments!!!!
+  if id : ⋁ cumu (Var same ⇒ Var same)
+  then there is no way to apply (id T t)
+
+  Also, id₁ Id₀ (id₁ Id₀ id₀)
+  because the result of right part is wrapped in cumu.
+
+  Idea 1)
+    Make it so that cumu's always around Vars (so basically wrap InCtx, and then
+    make it so vars have n-weakening built in), then in subType, when hit Var,
+    need to weaken toSub by some levels. But this is incorrect, because it
+    actually changes levels of the type? Like Δ-weakening something leaves it as
+    essentially the same thing, while n-weakening it changes it? If I have
+    f : ∀₃ X . T, then I can't just weaken arg to higher level than 3.
+  -}
+  -- ^^^^^^^^^^^ what if it actually breaks things with proof to fix this?
