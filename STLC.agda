@@ -90,7 +90,7 @@ unquote-n (var icx) sub = sub icx idRen
 unquote-n (nat n) sub none = nat n
 unquote-n (lambda e) sub none = lambda (unquote-n e (liftSub sub) none)
 unquote-n (lambda e) sub (one count) = λ a → unquote-n e (append1sub sub a) count
-unquote-n (app e₁ e₂) sub count = unquote-n e₁ sub (one count) (λ ren₁ count → unquote-n e₂ (transSR sub ren₁) count)
+unquote-n (app e₁ e₂) sub count = unquote-n e₁ sub (one count) (λ ren count → unquote-n e₂ (transSR sub ren) count)
 unquote-n ⋆ sub none = ⋆
 
 normalize : ∀{Γ T} → Exp Γ T → Nf Γ T
