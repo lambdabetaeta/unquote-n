@@ -41,18 +41,8 @@ weaken1Ren ren = next ren
 forget1ren : ∀{Γ₁ Γ₂ T} → Ren (Γ₁ , T) Γ₂ → Ren Γ₁ Γ₂
 forget1ren ren x = ren (next x)
 
--- liftRen : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Ren (Γ₁ , T) (Γ₂ , T)
--- liftRen ren same = same
--- liftRen ren (next itc) = next (ren itc)
-
 idRen : ∀{Γ} → Ren Γ Γ
 idRen x = x
-
--- weaken : ∀{Γ₁ Γ₂ T} → Ren Γ₁ Γ₂ → Exp Γ₁ T → Exp Γ₂ T
--- weaken {Γ₁} {Γ₂} ren (var icx) = var (ren icx)
--- weaken ren (lambda e) = lambda (weaken (liftRen ren) e)
--- weaken ren (app e₁ e₂) = app (weaken ren e₁) (weaken ren e₂)
--- weaken ren ⋆ = ⋆
 
 data ArgCount : Type → Set where
   none : ∀{T} → ArgCount T
@@ -62,9 +52,7 @@ mutual
   -- partially unquoted Exp
   PUExp : ∀{T} → ArgCount T → Ctx → Set
   PUExp (none {T}) Γ = Nf Γ T
-  PUExp (one {A} count) Γ
-    = (GExp Γ A) → PUExp count Γ
-    -- NOTE: maybe in system F here, the R.H.S. can simply be in a larger Δ
+  PUExp (one {A} count) Γ = (GExp Γ A) → PUExp count Γ
 
   -- Exp that can be partially unquoted to any amount
   APUExp : Ctx → Type → Set
