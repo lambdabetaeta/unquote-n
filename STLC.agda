@@ -32,12 +32,12 @@ mutual
     ⋆ : ∀{Γ} → Nf Γ base
 
 Ren : Ctx → Ctx → Set
-Ren Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → InCtx Γ₂ T
+Ren Δ Γ = ∀{T} → InCtx Γ T → InCtx Δ T
 
-weaken1Ren : ∀{Γ T} → Ren Γ (Γ , T)
+weaken1Ren : ∀{Γ T} → Ren (Γ , T) Γ
 weaken1Ren ren = next ren
 
-forget1ren : ∀{Γ₁ Γ₂ T} → Ren (Γ₁ , T) Γ₂ → Ren Γ₁ Γ₂
+forget1ren : ∀{Δ Γ T} → Ren Δ (Γ , T) → Ren Δ Γ
 forget1ren ren x = ren (next x)
 
 idRen : ∀{Γ} → Ren Γ Γ
@@ -55,12 +55,12 @@ mutual
 
   -- Exp that can be in a weaker context AND partially unquoted to any degree
   GExp : Ctx → Type → Set
-  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → (count : ArgCount T) → PUExp count Γ'
+  GExp Γ T = ∀{Γ'} → Ren Γ' Γ → (count : ArgCount T) → PUExp count Γ'
 
 Sub : Ctx → Ctx → Set
-Sub Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → GExp Γ₂ T
+Sub Δ Γ = ∀{T} → InCtx Γ T → GExp Δ T
 
-append1sub : ∀{Γ₁ A Γ₂} → Sub Γ₁ Γ₂ → GExp Γ₂ A → Sub (Γ₁ , A) Γ₂
+append1sub : ∀{Δ Γ A} → Sub Δ Γ → GExp Δ A → Sub Δ (Γ , A)
 append1sub sub e same ren = e ren
 append1sub sub e (next x) ren = sub x ren
 
@@ -75,13 +75,13 @@ liftSub : ∀{Γ₁ Γ₂ T} → Sub Γ₁ Γ₂ → Sub (Γ₁ , T) (Γ₂ , T)
 liftSub sub same ren count = nApp count (var (ren same))
 liftSub sub (next itc) ren = sub itc (forget1ren ren)
 
-_∘_ : ∀{A B C} → Ren A B → Ren B C → Ren A C
-s₁ ∘ s₂ = λ x → s₂ (s₁ x)
+_∘_ : ∀{Θ Δ Γ} → Ren Θ Δ → Ren Δ Γ → Ren Θ Γ
+s₁ ∘ s₂ = λ x → s₁ (s₂ x)
 
-transSR : ∀{Γ₁ Γ₂ Γ₃} → Sub Γ₁ Γ₂ → Ren Γ₂ Γ₃ → Sub Γ₁ Γ₃
-transSR sub ren x ren₂ = sub x (ren ∘ ren₂)
+transSR : ∀{Θ Δ Γ} → Sub Δ Γ → Ren Θ Δ → Sub Θ Γ
+transSR sub ren x ren₂ = sub x (ren₂ ∘ ren)
 
-unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → (count : ArgCount T) → PUExp count Γ₂
+unquote-n : ∀{Γ Δ T} → Exp Γ T → Sub Δ Γ → (count : ArgCount T) → PUExp count Δ
 unquote-n (var icx) sub = sub icx idRen
 unquote-n (lambda e) sub none = lambda (unquote-n e (liftSub sub) none)
 unquote-n (lambda e) sub (one count) = λ a → unquote-n e (append1sub sub a) count
