@@ -1,7 +1,6 @@
 open import Data.Unit
 open import Data.Product
 open import Data.Bool
-open import Data.Maybe
 open import Relation.Binary.PropositionalEquality
 
 data Type : Set where
@@ -54,13 +53,9 @@ mutual
   PUExp (none {T}) Γ = Nf Γ T
   PUExp (one {A} count) Γ = (GExp Γ A) → PUExp count Γ
 
-  -- Exp that can be partially unquoted to any amount
-  APUExp : Ctx → Type → Set
-  APUExp Γ T = (count : ArgCount T) → PUExp count Γ
-
   -- Exp that can be in a weaker context AND partially unquoted
   GExp : Ctx → Type → Set
-  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → APUExp Γ' T -- NOTE: the key was using Ren instead of Sub here!
+  GExp Γ T = ∀{Γ'} → Ren Γ Γ' → (count : ArgCount T) → PUExp count Γ'
 
 Sub : Ctx → Ctx → Set
 Sub Γ₁ Γ₂ = ∀{T} → InCtx Γ₁ T → GExp Γ₂ T
@@ -86,7 +81,7 @@ append1sub : ∀{Γ₁ A Γ₂} → Sub Γ₁ Γ₂ → GExp Γ₂ A → Sub (Γ
 append1sub sub e same ren = e ren
 append1sub sub e (next x) ren = sub x ren
 
-unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → APUExp Γ₂ T
+unquote-n : ∀{Γ₁ Γ₂ T} → Exp Γ₁ T → Sub Γ₁ Γ₂ → (count : ArgCount T) → PUExp count Γ₂
 unquote-n (var icx) sub = sub icx idRen -- sub icx
 unquote-n (lambda e) sub none
   = lambda (unquote-n e (liftSub sub) none)
